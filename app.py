@@ -4,15 +4,17 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
+from PIL import Image
 
 from src.loader import get_connection
 from src import analytics, queries, sheet_loader
 
 # ── Page config ───────────────────────────────────────────────────────────────
+_icon = Image.open("assets/logo.png")
 
 st.set_page_config(
     page_title="PEPPER LIKES CS",
-    page_icon="",
+    page_icon=_icon,
     layout="wide",
     initial_sidebar_state="expanded",
 )
