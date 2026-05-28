@@ -547,7 +547,11 @@ def _load_slack_churn_reports(con: duckdb.DuckDBPyConnection) -> None:
 def get_connection() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(":memory:")
     if config.DATA_SOURCE == "production_db":
-        _load_production_tables(con)
+        try:
+            _load_production_tables(con)
+        except Exception as e:
+            import sys
+            print(f"[loader] WARNING: MySQL接続失敗、シートデータのみで起動します: {type(e).__name__}: {e}", file=sys.stderr)
     else:
         _load_csv_tables(con)
     # Sheet/Slack integration is independent of DATA_SOURCE — load if creds available
