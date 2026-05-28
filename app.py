@@ -532,9 +532,12 @@ def render_summary():
         _churn_this_month = None
 
     # 掲載中の案件数 — DB の job_postings.status='active'
-    active_postings = int(con.execute(
-        "SELECT COUNT(*) FROM job_postings WHERE status = 'active'"
-    ).fetchone()[0])
+    try:
+        active_postings = int(con.execute(
+            "SELECT COUNT(*) FROM job_postings WHERE status = 'active'"
+        ).fetchone()[0])
+    except Exception:
+        active_postings = None
 
     # 応募0件案件数 — シート「★個別対策確認」をソースとする
     # 条件: G列='募集中' AND H列 IN ('解約連絡あり','公開中','空白') AND L列=0
@@ -767,7 +770,7 @@ def render_summary():
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st.markdown(
         '<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">'
-        + kpi("掲載中の案件数", f"{active_postings:,}", "件",
+        + kpi("掲載中の案件数", f"{active_postings:,}" if active_postings is not None else "—", "件",
               "現在公開中の募集（status=active）")
         + zero_app_kpi
         + "</div>",
