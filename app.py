@@ -520,16 +520,20 @@ def render_summary():
     except Exception:
         contract_status = None
 
-    # 今月の解約数 — sheet_contracts の churn_date が当月の企業数
+    # 今月の解約数・解約企業一覧 — sheet_contracts の churn_date が当月
     _this_month_ym = date.today().strftime("%Y-%m")
     try:
-        _churn_this_month = int(con.execute(f"""
-            SELECT COUNT(*) FROM sheet_contracts
+        _churn_this_month_df = con.execute(f"""
+            SELECT company_name, churn_date, cs_owner, churn_status
+            FROM sheet_contracts
             WHERE is_churned = 1
               AND strftime(CAST(churn_date AS DATE), '%Y-%m') = '{_this_month_ym}'
-        """).fetchone()[0])
+            ORDER BY churn_date
+        """).df()
+        _churn_this_month = len(_churn_this_month_df)
     except Exception:
         _churn_this_month = None
+        _churn_this_month_df = pd.DataFrame()
 
     # 掲載中の案件数 — DB の job_postings.status='active'
     try:
@@ -776,6 +780,33 @@ def render_summary():
         + "</div>",
         unsafe_allow_html=True,
     )
+
+    # ── 今月の解約企業一覧 ───────────────────────────────────────────────────────
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        section(f"🚨 今月の解約企業（{_this_month_ym}）",
+                f"{_churn_this_month or 0} 社 — シート契約マスタのchurn_date基準")
+        if not _churn_this_month_df.empty:
+            for _, row in _churn_this_month_df.iterrows():
+                churn_d = str(row["churn_date"])[:10] if row["churn_date"] else "—"
+                owner   = row["cs_owner"] or "—"
+                status  = row["churn_status"] or ""
+                name    = row["company_name"] or "—"
+                st.markdown(
+                    f'<div style="display:flex;align-items:center;gap:12px;'
+                    f'padding:8px 12px;margin-bottom:4px;border-radius:8px;'
+                    f'background:#FFF5F5;border-left:3px solid #D9534F;">'
+                    f'<span style="font-weight:700;color:#7A1E1E;flex:1">{name}</span>'
+                    f'<span style="color:#999;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
+                    f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
+                    + (f'<span style="color:#999;font-size:12px;white-space:nowrap">{status}</span>' if status else '')
+                    + '</div>',
+                    unsafe_allow_html=True,
+                )
+        elif _churn_this_month is not None:
+            st.info("今月の解約企業はまだありません。")
+        else:
+            st.warning("シート連携が必要です。")
 
     # ── LTV の見方 ─────────────────────────────────────────────────────────────
     if _avg_obs is not None:
