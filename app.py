@@ -578,7 +578,6 @@ def render_summary():
     sheet_ok  = queries.sheet_available(con)
     ret_kpis  = queries.get_retention_kpis(con) if sheet_ok else {}
     dur_stats = queries.get_avg_duration_all(con) if sheet_ok else {}
-    min_stats = queries.get_min_contract_analysis(con) if sheet_ok else {}
 
     # 月次チャーンレート（必須期間ベース）
     churn_rate_df = queries.get_monthly_churn_rate(con) if sheet_ok else pd.DataFrame()
@@ -999,54 +998,6 @@ def render_summary():
                     "　※最低契約期間未経過の企業を含む"
                 )
 
-    # ── 最低契約期間（AN列）分析 ─────────────────────────────────────────
-    if min_stats:
-        with st.container(border=True):
-            section("最低契約期間（AN列）比較",
-                    "解約済み企業の実継続月数と最低契約期間の関係")
-            c1, c2, c3 = st.columns(3)
-
-            # 最低期間より前に解約
-            with c1:
-                st.markdown(
-                    f'<div style="background:#FBECEC;border-radius:10px;padding:16px 20px;">'
-                    f'<div style="font-size:11px;color:#7A1E1E;font-weight:700;margin-bottom:6px;">'
-                    f'⚠️ 最低期間より早期解約</div>'
-                    f'<div style="font-size:28px;font-weight:800;color:#7A1E1E;">'
-                    f'{min_stats["before_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
-                    f'</div>', unsafe_allow_html=True)
-                if min_stats["before_names"]:
-                    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-                    for name in min_stats["before_names"]:
-                        st.markdown(f'<div style="font-size:11px;color:#555;padding:2px 4px;">・{name}</div>',
-                                    unsafe_allow_html=True)
-
-            # 最低期間ぴったりで解約
-            with c2:
-                st.markdown(
-                    f'<div style="background:#FFF8EC;border-radius:10px;padding:16px 20px;">'
-                    f'<div style="font-size:11px;color:#8C5E00;font-weight:700;margin-bottom:6px;">'
-                    f'📋 最低期間ちょうどで解約</div>'
-                    f'<div style="font-size:28px;font-weight:800;color:#8C5E00;">'
-                    f'{min_stats["exact_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
-                    f'</div>', unsafe_allow_html=True)
-                if min_stats["exact_names"]:
-                    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-                    for name in min_stats["exact_names"]:
-                        st.markdown(f'<div style="font-size:11px;color:#555;padding:2px 4px;">・{name}</div>',
-                                    unsafe_allow_html=True)
-
-            # 最低期間以上継続
-            with c3:
-                st.markdown(
-                    f'<div style="background:{MINT_BG};border-radius:10px;padding:16px 20px;">'
-                    f'<div style="font-size:11px;color:{MINT_DARK};font-weight:700;margin-bottom:6px;">'
-                    f'✅ 最低期間以上継続</div>'
-                    f'<div style="font-size:28px;font-weight:800;color:{MINT_DARK};">'
-                    f'{min_stats["beyond_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
-                    f'<div style="font-size:12px;color:{MINT_DARK};margin-top:6px;">'
-                    f'平均 {min_stats["beyond_avg"]:.1f} ヶ月</div>'
-                    f'</div>', unsafe_allow_html=True)
 
     # ── 応募数バケット 積み上げ棒グラフ ─────────────────────────────────
     try:
@@ -1748,6 +1699,7 @@ def render_retention():
         return
 
     kpis = queries.get_retention_kpis(con)
+    min_stats = queries.get_min_contract_analysis(con)
 
     # ── Headline KPIs ────────────────────────────────────────────────────────
     st.markdown(
@@ -1764,6 +1716,49 @@ def render_retention():
         + "</div>",
         unsafe_allow_html=True,
     )
+
+    # ── 最低契約期間（AN列）分析 ─────────────────────────────────────────────
+    if min_stats:
+        with st.container(border=True):
+            section("最低契約期間（AN列）比較",
+                    "解約済み企業の実継続月数と最低契約期間の関係")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(
+                    f'<div style="background:#FBECEC;border-radius:10px;padding:16px 20px;">'
+                    f'<div style="font-size:11px;color:#7A1E1E;font-weight:700;margin-bottom:6px;">'
+                    f'⚠️ 最低期間より早期解約</div>'
+                    f'<div style="font-size:28px;font-weight:800;color:#7A1E1E;">'
+                    f'{min_stats["before_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
+                    f'</div>', unsafe_allow_html=True)
+                if min_stats["before_names"]:
+                    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+                    for name in min_stats["before_names"]:
+                        st.markdown(f'<div style="font-size:11px;color:#555;padding:2px 4px;">・{name}</div>',
+                                    unsafe_allow_html=True)
+            with c2:
+                st.markdown(
+                    f'<div style="background:#FFF8EC;border-radius:10px;padding:16px 20px;">'
+                    f'<div style="font-size:11px;color:#8C5E00;font-weight:700;margin-bottom:6px;">'
+                    f'📋 最低期間ちょうどで解約</div>'
+                    f'<div style="font-size:28px;font-weight:800;color:#8C5E00;">'
+                    f'{min_stats["exact_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
+                    f'</div>', unsafe_allow_html=True)
+                if min_stats["exact_names"]:
+                    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+                    for name in min_stats["exact_names"]:
+                        st.markdown(f'<div style="font-size:11px;color:#555;padding:2px 4px;">・{name}</div>',
+                                    unsafe_allow_html=True)
+            with c3:
+                st.markdown(
+                    f'<div style="background:{MINT_BG};border-radius:10px;padding:16px 20px;">'
+                    f'<div style="font-size:11px;color:{MINT_DARK};font-weight:700;margin-bottom:6px;">'
+                    f'✅ 最低期間以上継続</div>'
+                    f'<div style="font-size:28px;font-weight:800;color:{MINT_DARK};">'
+                    f'{min_stats["beyond_count"]}<span style="font-size:14px;font-weight:500"> 社</span></div>'
+                    f'<div style="font-size:12px;color:{MINT_DARK};margin-top:6px;">'
+                    f'平均 {min_stats["beyond_avg"]:.1f} ヶ月</div>'
+                    f'</div>', unsafe_allow_html=True)
 
     # ── By plan ─────────────────────────────────────────────────────────────
     with st.container(border=True):
