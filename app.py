@@ -593,7 +593,8 @@ def render_summary():
     _this_month_ym = date.today().strftime("%Y-%m")
     try:
         _churn_this_month_df = con.execute(f"""
-            SELECT company_name, churn_date, cs_owner, churn_status, billed_months
+            SELECT company_name, churn_date, cs_owner, churn_status,
+                   billed_months, contract_months
             FROM sheet_contracts
             WHERE is_churned = 1
               AND strftime(CAST(churn_date AS DATE), '%Y-%m') = '{_this_month_ym}'
@@ -829,12 +830,14 @@ def render_summary():
                 f"{_churn_this_month or 0} 社 — 解約日・継続月数・担当者")
         if not _churn_this_month_df.empty:
             for _, row in _churn_this_month_df.iterrows():
-                churn_d    = str(row["churn_date"])[:10] if row["churn_date"] else "—"
-                owner      = row["cs_owner"] or "—"
-                status     = row["churn_status"] or ""
-                name       = row["company_name"] or "—"
-                months     = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
-                months_str = f"{months}ヶ月" if months else "—"
+                churn_d      = str(row["churn_date"])[:10] if row["churn_date"] else "—"
+                owner        = row["cs_owner"] or "—"
+                status       = row["churn_status"] or ""
+                name         = row["company_name"] or "—"
+                months       = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
+                min_months   = int(row["contract_months"]) if row["contract_months"] and str(row["contract_months"]) != "nan" else None
+                months_str   = f"{months}ヶ月" if months is not None else "—"
+                min_str      = f"最低{min_months}ヶ月" if min_months is not None else ""
                 st.markdown(
                     f'<div style="display:flex;align-items:center;gap:16px;'
                     f'padding:10px 14px;margin-bottom:6px;border-radius:10px;'
@@ -843,7 +846,9 @@ def render_summary():
                     f'<span style="color:#888;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
                     f'<span style="background:#F5E6E6;color:#7A1E1E;font-size:11px;font-weight:700;'
                     f'padding:2px 8px;border-radius:6px;white-space:nowrap">{months_str}</span>'
-                    f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
+                    + (f'<span style="background:#F0F0F0;color:#555;font-size:11px;'
+                       f'padding:2px 8px;border-radius:6px;white-space:nowrap">{min_str}</span>' if min_str else '')
+                    + f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
                     + (f'<span style="color:#999;font-size:11px;white-space:nowrap">{status}</span>' if status else '')
                     + '</div>',
                     unsafe_allow_html=True,
