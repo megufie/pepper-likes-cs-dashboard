@@ -1046,6 +1046,7 @@ def get_min_contract_analysis(con: duckdb.DuckDBPyConnection) -> dict:
         return {}
     try:
         # 最低契約期間が設定されている行のみ対象
+        # 同じ会社名が複数回登場する企業（再開企業）は除外
         base = con.execute("""
             SELECT
                 company_name,
@@ -1056,6 +1057,12 @@ def get_min_contract_analysis(con: duckdb.DuckDBPyConnection) -> dict:
             FROM sheet_contracts
             WHERE contract_months IS NOT NULL AND billed_months IS NOT NULL
               AND billed_months > 0
+              AND company_name IN (
+                  SELECT company_name
+                  FROM sheet_contracts
+                  GROUP BY company_name
+                  HAVING COUNT(*) = 1
+              )
         """).df()
         if base.empty:
             return {}
