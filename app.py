@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 import os
+import json
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -13,6 +14,27 @@ from src import analytics, queries, sheet_loader
 # ── Page config ───────────────────────────────────────────────────────────────
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 _icon_path = os.path.join(_APP_DIR, "assets", "logo.png")
+
+# ── 解約理由 永続化 ────────────────────────────────────────────────────────────
+_CHURN_REASONS_FILE = os.path.join(_APP_DIR, "data", "churn_reasons.json")
+
+def _load_churn_reasons() -> dict:
+    try:
+        if os.path.exists(_CHURN_REASONS_FILE):
+            with open(_CHURN_REASONS_FILE, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_churn_reasons(reasons: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(_CHURN_REASONS_FILE), exist_ok=True)
+        with open(_CHURN_REASONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(reasons, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 _icon = Image.open(_icon_path) if os.path.exists(_icon_path) else "🌶️"
 
 st.set_page_config(
@@ -828,29 +850,57 @@ def render_summary():
         section(f"🚨 今月の解約企業（{_this_month_ym}）",
                 f"{_churn_this_month or 0} 社 — 解約日・継続月数・担当者")
         if not _churn_this_month_df.empty:
+            # 解約理由を読み込み
+            _churn_reasons = _load_churn_reasons()
+            _reasons_changed = False
+
             for _, row in _churn_this_month_df.iterrows():
-                churn_d      = str(row["churn_date"])[:10] if row["churn_date"] else "—"
-                owner        = row["cs_owner"] or "—"
-                status       = row["churn_status"] or ""
-                name         = row["company_name"] or "—"
-                months       = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
-                min_months   = int(row["contract_months"]) if row["contract_months"] and str(row["contract_months"]) != "nan" else None
-                months_str   = f"{months}ヶ月" if months is not None else "—"
-                min_str      = f"最低{min_months}ヶ月" if min_months is not None else ""
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:16px;'
-                    f'padding:10px 14px;margin-bottom:6px;border-radius:10px;'
-                    f'background:#FFF5F5;border-left:4px solid #D9534F;">'
-                    f'<span style="font-weight:600;color:#1A1A1A;flex:1;font-size:13px">{name}</span>'
-                    f'<span style="color:#888;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
-                    f'<span style="background:#F5E6E6;color:#7A1E1E;font-size:11px;font-weight:700;'
-                    f'padding:2px 8px;border-radius:6px;white-space:nowrap">{months_str}</span>'
-                    + (f'<span style="background:#F0F0F0;color:#555;font-size:11px;'
-                       f'padding:2px 8px;border-radius:6px;white-space:nowrap">{min_str}</span>' if min_str else '')
-                    + (f'<span style="color:#999;font-size:11px;white-space:nowrap">{status}</span>' if status else '')
-                    + '</div>',
-                    unsafe_allow_html=True,
-                )
+                churn_d    = str(row["churn_date"])[:10] if row["churn_date"] else "—"
+                name       = row["company_name"] or "—"
+                months     = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
+                min_months = int(row["contract_months"]) if row["contract_months"] and str(row["contract_months"]) != "nan" else None
+                months_str = f"{months}ヶ月" if months is not None else "—"
+                min_str    = f"最低{min_months}ヶ月" if min_months is not None else ""
+                reason_key = f"{_this_month_ym}_{name}"
+
+                with st.container():
+                    # 企業情報行
+                    st.markdown(
+                        f'<div style="display:flex;align-items:center;gap:16px;'
+                        f'padding:10px 14px 4px 14px;border-radius:10px 10px 0 0;'
+                        f'background:#FFF5F5;border-left:4px solid #D9534F;border-top:1px solid #F5C6C6;'
+                        f'border-right:1px solid #F5C6C6;margin-bottom:0;">'
+                        f'<span style="font-weight:600;color:#1A1A1A;flex:1;font-size:13px">{name}</span>'
+                        f'<span style="color:#888;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
+                        f'<span style="background:#F5E6E6;color:#7A1E1E;font-size:11px;font-weight:700;'
+                        f'padding:2px 8px;border-radius:6px;white-space:nowrap">{months_str}</span>'
+                        + (f'<span style="background:#F0F0F0;color:#555;font-size:11px;'
+                           f'padding:2px 8px;border-radius:6px;white-space:nowrap">{min_str}</span>' if min_str else '')
+                        + '</div>',
+                        unsafe_allow_html=True,
+                    )
+                    # 解約理由入力欄
+                    saved_reason = _churn_reasons.get(reason_key, "")
+                    new_reason = st.text_input(
+                        "解約理由",
+                        value=saved_reason,
+                        key=f"churn_reason_{reason_key}",
+                        placeholder="例：予算削減、採用完了、効果が見えなかった...",
+                        label_visibility="collapsed",
+                    )
+                    if new_reason != saved_reason:
+                        _churn_reasons[reason_key] = new_reason
+                        _reasons_changed = True
+
+                st.markdown('<div style="margin-bottom:10px"></div>', unsafe_allow_html=True)
+
+            # 変更があれば自動保存
+            if _reasons_changed:
+                if _save_churn_reasons(_churn_reasons):
+                    st.toast("解約理由を保存しました ✓", icon="✅")
+                else:
+                    st.toast("⚠️ 保存に失敗しました（クラウド環境では永続化されません）", icon="⚠️")
+
         elif _churn_this_month is not None:
             st.success("今月の解約企業はまだありません。")
         else:
