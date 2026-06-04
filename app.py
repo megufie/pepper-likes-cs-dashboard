@@ -848,7 +848,6 @@ def render_summary():
                     f'padding:2px 8px;border-radius:6px;white-space:nowrap">{months_str}</span>'
                     + (f'<span style="background:#F0F0F0;color:#555;font-size:11px;'
                        f'padding:2px 8px;border-radius:6px;white-space:nowrap">{min_str}</span>' if min_str else '')
-                    + f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
                     + (f'<span style="color:#999;font-size:11px;white-space:nowrap">{status}</span>' if status else '')
                     + '</div>',
                     unsafe_allow_html=True,
