@@ -524,7 +524,7 @@ def render_summary():
     _this_month_ym = date.today().strftime("%Y-%m")
     try:
         _churn_this_month_df = con.execute(f"""
-            SELECT company_name, churn_date, cs_owner, churn_status
+            SELECT company_name, churn_date, cs_owner, churn_status, billed_months
             FROM sheet_contracts
             WHERE is_churned = 1
               AND strftime(CAST(churn_date AS DATE), '%Y-%m') = '{_this_month_ym}'
@@ -792,12 +792,15 @@ def render_summary():
                 owner   = row["cs_owner"] or "—"
                 status  = row["churn_status"] or ""
                 name    = row["company_name"] or "—"
+                months  = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
+                months_str = f"{months}ヶ月" if months else "—"
                 st.markdown(
                     f'<div style="display:flex;align-items:center;gap:12px;'
                     f'padding:8px 12px;margin-bottom:4px;border-radius:8px;'
                     f'background:#FFF5F5;border-left:3px solid #D9534F;">'
                     f'<span style="font-weight:700;color:#7A1E1E;flex:1">{name}</span>'
                     f'<span style="color:#999;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
+                    f'<span style="color:#555;font-size:12px;white-space:nowrap">継続 {months_str}</span>'
                     f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
                     + (f'<span style="color:#999;font-size:12px;white-space:nowrap">{status}</span>' if status else '')
                     + '</div>',
