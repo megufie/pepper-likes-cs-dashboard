@@ -1070,13 +1070,12 @@ def get_min_contract_analysis(con: duckdb.DuckDBPyConnection) -> dict:
             return {}
 
         # 解約済み企業のみで最低期間との比較
-        # billed_months は月差分（例: 11月開始→1月解約 = 2）
-        # contract_months = 3 の場合、最終月は開始月+2 → billed_months == contract_months - 1 が「ちょうど」
+        # billed_months は正確なカレンダー月数（例: 11月1日開始→1月31日解約 = 3）
         churned = base[base["is_churned"] == 1].copy()
-        before = churned[churned["billed_months"] < churned["min_period"] - 1]
-        exact  = churned[churned["billed_months"] == churned["min_period"] - 1]
+        before = churned[churned["billed_months"] < churned["min_period"]]
+        exact  = churned[churned["billed_months"] == churned["min_period"]]
         # 最低期間以上続けた企業（継続中 + 解約済みで期間超え）
-        beyond = base[base["billed_months"] >= base["min_period"]]
+        beyond = base[base["billed_months"] > base["min_period"]]
 
         return {
             "before_names":   before["company_name"].dropna().tolist(),
