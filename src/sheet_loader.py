@@ -184,14 +184,14 @@ def fetch_contract_master() -> pd.DataFrame:
     today = pd.Timestamp.today().normalize()
     df["effective_end_date"] = df["churn_date"].fillna(today)
 
-    # 課金月数 = 掲載開始日から解約日（or 今日）までの月数
-    #   半端な日付でもカレンダー月単位でカウント（例：7/15開始, 11/30解約 → 5ヶ月）
+    # 課金月数 = 掲載開始日から解約日（or 今日）までの月差分
+    #   例: 3/4開始, 6/3解約 → 6-3 = 3ヶ月
     def _calc_billed_months(row):
         start = row["start_date"]
         end = row["effective_end_date"]
         if pd.isna(start) or pd.isna(end) or end < start:
             return None
-        return (end.year - start.year) * 12 + (end.month - start.month) + 1
+        return (end.year - start.year) * 12 + (end.month - start.month)
 
     df["billed_months"] = df.apply(_calc_billed_months, axis=1)
 
@@ -660,7 +660,7 @@ def fetch_timeline_source() -> pd.DataFrame:
         s, e = row["start_date"], row["effective_end_date"]
         if pd.isna(s) or pd.isna(e) or e < s:
             return None
-        return (e.year - s.year) * 12 + (e.month - s.month) + 1
+        return (e.year - s.year) * 12 + (e.month - s.month)
 
     df["billed_months"] = df.apply(_billed, axis=1)
 

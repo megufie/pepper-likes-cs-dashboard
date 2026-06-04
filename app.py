@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+import os
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -10,7 +11,9 @@ from src.loader import get_connection
 from src import analytics, queries, sheet_loader
 
 # ── Page config ───────────────────────────────────────────────────────────────
-_icon = Image.open("assets/logo.png")
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+_icon_path = os.path.join(_APP_DIR, "assets", "logo.png")
+_icon = Image.open(_icon_path) if os.path.exists(_icon_path) else "🌶️"
 
 st.set_page_config(
     page_title="PEPPER LIKES CS",
@@ -65,81 +68,104 @@ html, body, [class*="css"] {{
     max-width: 1500px;
 }}
 
-/* ── Sidebar (light) ── */
+/* ── Sidebar (dark) ── */
 [data-testid="stSidebar"] {{
-    background-color: #FFFFFF !important;
-    border-right: 1px solid {LINE} !important;
+    background-color: #13111A !important;
+    border-right: none !important;
+    min-width: 220px !important;
 }}
-[data-testid="stSidebar"] * {{ color: {INK_2} !important; }}
+[data-testid="stSidebar"] * {{ color: #C8C8D4 !important; }}
 
 /* Brand area */
 .brand {{
-    padding: 16px 4px 18px 4px;
-    border-bottom: 1px solid {LINE};
-    margin-bottom: 14px;
+    padding: 20px 16px 20px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
 }}
 .brand-row {{
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }}
 .brand-mark {{
-    width: 22px; height: 22px;
-    border-radius: 6px;
+    width: 28px; height: 28px;
+    border-radius: 8px;
     background: linear-gradient(135deg, {MINT} 0%, {MINT_DARK} 100%);
     display: inline-block;
+    flex-shrink: 0;
 }}
 .brand-name {{
-    font-size: 14px; font-weight: 700; color: {INK} !important;
-    letter-spacing: -0.2px;
+    font-size: 15px; font-weight: 700; color: #FFFFFF !important;
+    letter-spacing: -0.3px;
 }}
-.brand-suffix {{ font-size: 12px; font-weight: 600; color: {INK_3} !important; }}
+.brand-suffix {{ font-size: 11px; font-weight: 600; color: {MINT} !important; margin-left: 2px; }}
 .brand-tag {{
     display: inline-block;
-    background: {MINT_BG}; color: {MINT_DARK} !important;
+    background: rgba(79,184,154,0.18); color: {MINT} !important;
     font-size: 10px; font-weight: 700;
     padding: 2px 8px; border-radius: 10px;
     margin-top: 8px;
 }}
 
-/* Section headers in sidebar (rendered as pseudo-elements before radio items) */
-[data-testid="stSidebar"] .stRadio > label {{ display: none !important; }}
-[data-testid="stSidebar"] [role="radiogroup"] {{ gap: 0 !important; }}
-[data-testid="stSidebar"] [role="radiogroup"] > label {{
-    padding: 7px 10px !important;
-    margin: 1px 0 !important;
-    border-radius: 8px !important;
-    cursor: pointer;
-    transition: background 0.15s ease;
-}}
-[data-testid="stSidebar"] [role="radiogroup"] > label:hover {{
-    background: {PAGE_BG} !important;
-}}
-[data-testid="stSidebar"] [role="radiogroup"] > label > div:first-child {{
-    display: none !important;
-}}
-[data-testid="stSidebar"] [role="radiogroup"] > label p {{
-    font-size: 13px !important;
-    color: {INK_2} !important;
+/* Nav section headers */
+.nav-section-header {{
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: rgba(200,200,212,0.45) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.2px !important;
+    padding: 18px 16px 6px 16px !important;
     margin: 0 !important;
-    padding-left: 14px !important;
-    position: relative;
+    display: block;
 }}
-/* Active item highlight */
-[data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) {{
-    background: {MINT_BG} !important;
+
+/* Nav buttons — 枠線を完全に消す */
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button,
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] button,
+[data-testid="stSidebar"] .stButton > button {{
+    background: transparent !important;
+    border: none !important;
+    border-color: transparent !important;
+    outline: none !important;
+    box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    padding: 8px 16px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    color: rgba(200,200,212,0.8) !important;
+    width: 100% !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+    height: auto !important;
+    min-height: 36px !important;
+    margin: 1px 0 !important;
 }}
-[data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) p {{
-    color: {MINT_DARK} !important;
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] button:hover,
+[data-testid="stSidebar"] .stButton > button:hover {{
+    background: rgba(255,255,255,0.07) !important;
+    color: #FFFFFF !important;
+    border: none !important;
+    box-shadow: none !important;
+}}
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"],
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] button {{
+    background: rgba(79,184,154,0.15) !important;
+    color: {MINT} !important;
     font-weight: 600 !important;
+    border-left: 3px solid {MINT} !important;
+    padding-left: 13px !important;
+    border-top: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
 }}
-[data-testid="stSidebar"] [role="radiogroup"] > label:has(input:checked) p::before {{
-    content: "";
-    position: absolute;
-    left: 0; top: 50%; transform: translateY(-50%);
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: {MINT};
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"]:hover,
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] button:hover {{
+    background: rgba(79,184,154,0.25) !important;
 }}
 
 /* ── Top app header bar ── */
@@ -189,21 +215,42 @@ html, body, [class*="css"] {{
 .kpi-grid {{
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 14px;
-    margin-bottom: 22px;
+    gap: 16px;
+    margin-bottom: 20px;
 }}
 .kpi {{
     background: {CARD_BG};
     border: 1px solid {LINE};
-    border-radius: 10px;
-    padding: 18px 22px 18px 22px;
+    border-radius: 14px;
+    padding: 22px 24px 20px 24px;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.2s ease;
+}}
+.kpi:hover {{
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+}}
+.kpi-danger {{
+    background: {CARD_BG};
+    border: 1px solid #F5C6C6;
+    border-radius: 14px;
+    padding: 22px 24px 20px 24px;
+    border-top: 3px solid #D9534F;
+}}
+.kpi-accent {{
+    background: {CARD_BG};
+    border: 1px solid #C3E8DC;
+    border-radius: 14px;
+    padding: 22px 24px 20px 24px;
+    border-top: 3px solid {MINT};
 }}
 .kpi-label {{
-    font-size: 12px;
+    font-size: 11px;
     color: {INK_3};
-    font-weight: 500;
-    margin-bottom: 8px;
-    letter-spacing: -0.1px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
 }}
 .kpi-row {{
     display: flex;
@@ -211,12 +258,14 @@ html, body, [class*="css"] {{
     gap: 6px;
 }}
 .kpi-value {{
-    font-size: 30px;
+    font-size: 34px;
     font-weight: 700;
     color: {INK};
-    letter-spacing: -0.8px;
+    letter-spacing: -1px;
     line-height: 1;
 }}
+.kpi-value-danger {{ color: #D9534F; }}
+.kpi-value-accent {{ color: {MINT_DARK}; }}
 .kpi-unit {{
     font-size: 14px;
     color: {INK_2};
@@ -225,7 +274,8 @@ html, body, [class*="css"] {{
 .kpi-sub {{
     font-size: 11px;
     color: {INK_3};
-    margin-top: 6px;
+    margin-top: 8px;
+    line-height: 1.5;
 }}
 .kpi-pill {{
     display: inline-block;
@@ -242,22 +292,22 @@ html, body, [class*="css"] {{
 [data-testid="stVerticalBlockBorderWrapper"] {{
     background: {CARD_BG} !important;
     border: 1px solid {LINE} !important;
-    border-radius: 10px !important;
+    border-radius: 14px !important;
     box-shadow: none !important;
-    padding: 14px 18px !important;
-    margin-bottom: 14px !important;
+    padding: 18px 22px !important;
+    margin-bottom: 16px !important;
 }}
 .section-title {{
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: {INK};
-    letter-spacing: -0.1px;
+    letter-spacing: -0.2px;
     margin: 0 0 2px 0;
 }}
 .section-sub {{
     font-size: 11px;
     color: {INK_3};
-    margin: 0 0 10px 0;
+    margin: 0 0 12px 0;
 }}
 
 /* ── Headings inside Streamlit ── */
@@ -433,13 +483,29 @@ def themed(fig: go.Figure, **extra) -> go.Figure:
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
-PAGE_LABELS = ["概要", "継続率分析", "解約分析",
-               "応募分析", "未回収債権", "CS業務用", "利用状況"]
-PAGE_KEYS   = ["summary", "retention", "churn",
-               "applications", "uncollected", "cs_ops", "usage"]
+# ── Navigation structure ──────────────────────────────────────────────────────
+
+NAV_SECTIONS = [
+    ("メイン", [
+        ("概要", "summary"),
+    ]),
+    ("分析", [
+        ("継続率分析", "retention"),
+        ("解約分析",   "churn"),
+        ("応募分析",   "applications"),
+    ]),
+    ("業務", [
+        ("未回収債権", "uncollected"),
+        ("CS業務用",   "cs_ops"),
+        ("利用状況",   "usage"),
+    ]),
+]
+
+if "page_key" not in st.session_state:
+    st.session_state.page_key = "summary"
 
 with st.sidebar:
-    st.markdown(f"""
+    st.markdown("""
     <div class="brand">
       <div class="brand-row">
         <span class="brand-mark"></span>
@@ -450,16 +516,19 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    selected_label = st.radio("nav", PAGE_LABELS, label_visibility="collapsed")
+    for section_title, pages in NAV_SECTIONS:
+        st.markdown(f'<span class="nav-section-header">{section_title}</span>',
+                    unsafe_allow_html=True)
+        for label, key in pages:
+            is_active = st.session_state.page_key == key
+            btn_type  = "primary" if is_active else "secondary"
+            if st.button(label, key=f"nav_{key}",
+                         use_container_width=True, type=btn_type):
+                st.session_state.page_key = key
+                st.rerun()
 
-    st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
-    _c1, _c2, _c3 = st.columns([1, 4, 1])
-    with _c2:
-        if st.button("↻ 更新", use_container_width=True):
-            get_connection.clear()
-            st.rerun()
 
-page_key = PAGE_KEYS[PAGE_LABELS.index(selected_label)]
+page_key = st.session_state.page_key
 
 con = get_connection()
 
@@ -709,107 +778,104 @@ def render_summary():
         active_cont_kpi = kpi("継続中 任意継続月数（現状）", "—", "", "")
         ltv_cr_kpi      = kpi("必須後チャーンレート（LTV用）", "—", "", "")
 
-    # ── 契約企業数カード ─────────────────────────────────────────────────────
-    if contract_status:
-        st.markdown(
-            '<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">'
-            + kpi("累計契約企業数", f"{contract_status['累計']}", "社",
-                  "01.契約済み＋03.解約済み＋04.解約申し出あり の合計")
-            + kpi("現在の契約企業数",
-                  f"{contract_status['契約済み'] + contract_status['解約申し出あり']}", "社",
-                  f"01.契約済み {contract_status['契約済み']} ＋ 04.解約申し出あり {contract_status['解約申し出あり']}")
-            + (_churn_this_month is not None
-               and kpi("🚨 今月の解約数", f"{_churn_this_month}", "社",
-                       f"{_this_month_ym} に churn_date が入った企業数（シート由来）")
-               or kpi("🚨 今月の解約数", "—", "社", "シート連携が必要です"))
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    # ── LTV・継続指標 KPI グリッド ────────────────────────────────────────────
-    # Row A: LTV用指標（平均継続月数 / 必須後チャーンレート）+ モニタリング用（当月/前月）
+    # ── KPI 上段：主要3指標 ───────────────────────────────────────────────────
     _cr_today = date.today().strftime("%Y-%m")
     _cr_prev  = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
 
-    def _cr_kpi(row, label_suffix=""):
-        if row.empty or row.iloc[0]["churn_rate"] is None:
-            return kpi(f"月次CR（モニタリング）{label_suffix}", "—", "%", "解約可能企業なし")
-        r        = row.iloc[0]
-        rate_str = f"{r['churn_rate']:.1f}"
-        sub      = f"解約 {int(r['churned'])} 社 ／ 解約可能 {int(r['eligible'])} 社（必須期間経過済み）"
-        return kpi(f"月次CR（モニタリング）{label_suffix}", rate_str, "%", sub)
-
-    # 上段：継続月数の比較（解約済み実績 vs 継続中の現状）
-    st.markdown(
-        '<div class="kpi-grid" style="grid-template-columns: repeat(2, 1fr);">'
-        + avg_cont_kpi
-        + active_cont_kpi
-        + "</div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
-    # 下段：チャーンレート（LTV用 / モニタリング当月 / 前月）
+    # 当月チャーンレート取得
+    _cr_now_val = None
+    _cr_now_sub = "—"
     if not churn_rate_df.empty:
-        _cr_row_now  = churn_rate_df[churn_rate_df["month"] == _cr_today]
-        _cr_row_prev = churn_rate_df[churn_rate_df["month"] == _cr_prev]
-        st.markdown(
-            '<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">'
-            + ltv_cr_kpi
-            + _cr_kpi(_cr_row_now,  f"（{_cr_today}）")
-            + _cr_kpi(_cr_row_prev, f"（{_cr_prev}）")
-            + "</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<div class="kpi-grid" style="grid-template-columns: repeat(1, 1fr);">'
-            + ltv_cr_kpi
-            + "</div>",
-            unsafe_allow_html=True,
-        )
+        _cr_row_now = churn_rate_df[churn_rate_df["month"] == _cr_today]
+        if not _cr_row_now.empty and _cr_row_now.iloc[0]["churn_rate"] is not None:
+            r = _cr_row_now.iloc[0]
+            _cr_now_val = r["churn_rate"]
+            _cr_now_sub = f"解約 {int(r['churned'])} 社 ／ 解約可能 {int(r['eligible'])} 社"
 
-    # Row B: 掲載中 / 応募0件
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    # 現在の契約企業数
+    _active_count_disp = (
+        f"{contract_status['契約済み'] + contract_status['解約申し出あり']}"
+        if contract_status else "—"
+    )
+    _active_sub = (
+        f"契約済み {contract_status['契約済み']} ＋ 解約申し出あり {contract_status['解約申し出あり']}"
+        if contract_status else ""
+    )
+
     st.markdown(
         '<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">'
-        + kpi("掲載中の案件数", f"{active_postings:,}" if active_postings is not None else "—", "件",
-              "現在公開中の募集（status=active）")
-        + zero_app_kpi
+        + f'<div class="kpi kpi-accent">'
+          f'<div class="kpi-label">現在の契約企業数</div>'
+          f'<div class="kpi-row"><span class="kpi-value kpi-value-accent">{_active_count_disp}</span>'
+          f'<span class="kpi-unit">社</span></div>'
+          f'<div class="kpi-sub">{_active_sub}</div></div>'
+        + f'<div class="kpi kpi-danger">'
+          f'<div class="kpi-label">今月の解約数</div>'
+          f'<div class="kpi-row"><span class="kpi-value kpi-value-danger">{_churn_this_month if _churn_this_month is not None else "—"}</span>'
+          f'<span class="kpi-unit">社</span></div>'
+          f'<div class="kpi-sub">{_this_month_ym} / churn_date基準（シート由来）</div></div>'
+        + f'<div class="kpi">'
+          f'<div class="kpi-label">月次チャーンレート（{_cr_today}）</div>'
+          f'<div class="kpi-row"><span class="kpi-value">{f"{_cr_now_val:.1f}" if _cr_now_val is not None else "—"}</span>'
+          f'<span class="kpi-unit">%</span></div>'
+          f'<div class="kpi-sub">{_cr_now_sub}</div></div>'
         + "</div>",
         unsafe_allow_html=True,
     )
 
-    # ── 今月の解約企業一覧 ───────────────────────────────────────────────────────
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    # ── 今月の解約企業一覧（最優先表示）─────────────────────────────────────────
     with st.container(border=True):
         section(f"🚨 今月の解約企業（{_this_month_ym}）",
-                f"{_churn_this_month or 0} 社 — シート契約マスタのchurn_date基準")
+                f"{_churn_this_month or 0} 社 — 解約日・継続月数・担当者")
         if not _churn_this_month_df.empty:
             for _, row in _churn_this_month_df.iterrows():
-                churn_d = str(row["churn_date"])[:10] if row["churn_date"] else "—"
-                owner   = row["cs_owner"] or "—"
-                status  = row["churn_status"] or ""
-                name    = row["company_name"] or "—"
-                months  = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
+                churn_d    = str(row["churn_date"])[:10] if row["churn_date"] else "—"
+                owner      = row["cs_owner"] or "—"
+                status     = row["churn_status"] or ""
+                name       = row["company_name"] or "—"
+                months     = int(row["billed_months"]) if row["billed_months"] and str(row["billed_months"]) != "nan" else None
                 months_str = f"{months}ヶ月" if months else "—"
                 st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:12px;'
-                    f'padding:8px 12px;margin-bottom:4px;border-radius:8px;'
-                    f'background:#FFF5F5;border-left:3px solid #D9534F;">'
-                    f'<span style="font-weight:700;color:#7A1E1E;flex:1">{name}</span>'
-                    f'<span style="color:#999;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
-                    f'<span style="color:#555;font-size:12px;white-space:nowrap">継続 {months_str}</span>'
+                    f'<div style="display:flex;align-items:center;gap:16px;'
+                    f'padding:10px 14px;margin-bottom:6px;border-radius:10px;'
+                    f'background:#FFF5F5;border-left:4px solid #D9534F;">'
+                    f'<span style="font-weight:600;color:#1A1A1A;flex:1;font-size:13px">{name}</span>'
+                    f'<span style="color:#888;font-size:12px;white-space:nowrap">解約日 {churn_d}</span>'
+                    f'<span style="background:#F5E6E6;color:#7A1E1E;font-size:11px;font-weight:700;'
+                    f'padding:2px 8px;border-radius:6px;white-space:nowrap">{months_str}</span>'
                     f'<span style="color:#555;font-size:12px;white-space:nowrap">担当：{owner}</span>'
-                    + (f'<span style="color:#999;font-size:12px;white-space:nowrap">{status}</span>' if status else '')
+                    + (f'<span style="color:#999;font-size:11px;white-space:nowrap">{status}</span>' if status else '')
                     + '</div>',
                     unsafe_allow_html=True,
                 )
         elif _churn_this_month is not None:
-            st.info("今月の解約企業はまだありません。")
+            st.success("今月の解約企業はまだありません。")
         else:
             st.warning("シート連携が必要です。")
+
+    # ── KPI 下段：継続月数＋応募0件（詳細） ──────────────────────────────────
+    col1, col2 = st.columns(2)
+    with col1:
+        with st.container(border=True):
+            section("📊 平均継続月数",
+                    f"解約済み{_churned_count}社の実測 vs 継続中（必須超えのみ）")
+            st.markdown(
+                '<div class="kpi-grid" style="grid-template-columns: repeat(2, 1fr);margin-bottom:0">'
+                + avg_cont_kpi
+                + active_cont_kpi
+                + "</div>",
+                unsafe_allow_html=True,
+            )
+    with col2:
+        with st.container(border=True):
+            section("⚠️ 応募0件 案件数",
+                    "募集中 × 応募0件（シート由来）")
+            st.markdown(
+                '<div class="kpi-grid" style="grid-template-columns: repeat(1, 1fr);margin-bottom:0">'
+                + zero_app_kpi
+                + "</div>",
+                unsafe_allow_html=True,
+            )
 
     # ── LTV の見方 ─────────────────────────────────────────────────────────────
     if _avg_obs is not None:
@@ -914,7 +980,8 @@ def render_summary():
             })
             st.dataframe(
                 plan_df.style
-                .format({"全社平均(月)": "{:.1f}", "解約済平均(月)": "{:.1f}"})
+                .format({"全社平均(月)": "{:.1f}", "解約済平均(月)": "{:.1f}",
+                         "企業数": "{:.0f}", "継続中": "{:.0f}"})
                 .set_properties(**{"font-size": "12px"}),
                 use_container_width=True, hide_index=True,
                 height=min(400, 60 + len(plan_df) * 35),
