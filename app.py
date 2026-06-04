@@ -918,26 +918,26 @@ def render_summary():
     # ── KPI 下段：継続月数＋応募0件（詳細） ──────────────────────────────────
     col1, col2 = st.columns(2)
     with col1:
-        with st.container(border=True):
-            section("📊 平均継続月数",
-                    f"解約済み{_churned_count}社の実測 vs 継続中（必須超えのみ）")
-            st.markdown(
-                '<div class="kpi-grid" style="grid-template-columns: repeat(2, 1fr);margin-bottom:0">'
-                + avg_cont_kpi
-                + active_cont_kpi
-                + "</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            '<div style="background:#fff;border:1px solid #E8E8E8;border-radius:14px;padding:18px 22px;">'
+            + '<div class="section-title">📊 平均継続月数</div>'
+            + f'<div class="section-sub">解約済み{_churned_count}社の実測 vs 継続中（必須超えのみ）</div>'
+            + '<div class="kpi-grid" style="grid-template-columns: repeat(2, 1fr);margin-bottom:0">'
+            + avg_cont_kpi
+            + active_cont_kpi
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
     with col2:
-        with st.container(border=True):
-            section("⚠️ 応募0件 案件数",
-                    "募集中 × 応募0件（シート由来）")
-            st.markdown(
-                '<div class="kpi-grid" style="grid-template-columns: repeat(1, 1fr);margin-bottom:0">'
-                + zero_app_kpi
-                + "</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            '<div style="background:#fff;border:1px solid #E8E8E8;border-radius:14px;padding:18px 22px;">'
+            + '<div class="section-title">⚠️ 応募0件 案件数</div>'
+            + '<div class="section-sub">募集中 × 応募0件（シート由来）</div>'
+            + '<div class="kpi-grid" style="grid-template-columns: repeat(1, 1fr);margin-bottom:0">'
+            + zero_app_kpi
+            + "</div></div>",
+            unsafe_allow_html=True,
+        )
 
     # ── LTV の見方 ─────────────────────────────────────────────────────────────
     if _avg_obs is not None:
