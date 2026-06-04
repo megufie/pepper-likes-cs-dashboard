@@ -668,35 +668,44 @@ def render_summary():
 
     # ── LTV・継続指標の計算 ───────────────────────────────────────────────────────
     # 変数初期化
-    _avg_obs            = None   # 解約済み企業の実測平均継続月数
+    _avg_obs            = None   # LTV基準平均継続月数（解約済み＋最低期間超え継続中）
     _avg_active         = None   # 継続中企業の現時点での平均月数（必須込み）
     _avg_active_post    = None   # 継続中企業の必須後 平均滞在月数
     _mand_avg           = None   # 必須期間の加重平均
-    _post_mand_avg      = None   # 必須期間後の平均滞在月数（解約済み / LTV算出用）
+    _post_mand_avg      = None   # 必須期間後の平均滞在月数（LTV算出用）
     _ltv_churn_rate     = None   # LTV用月次チャーンレート（1 / _post_mand_avg）
     _churned_count      = None   # 解約済み企業数
     _active_count       = None   # 継続中企業数
     _active_past_mand   = None   # 継続中のうち必須期間経過済み企業数
+    _ltv_total_count    = None   # LTV計算対象の合計企業数
     _exit_rate          = None   # 必須期間終了当月離脱率（初回解約機会）
 
     if sheet_ok:
-        # 解約済み / 継続中 それぞれの平均継続月数
-        _obs_df = con.execute("""
+        # 解約済み / 継続中 それぞれのカウント
+        _cnt_df = con.execute("""
             SELECT
-                AVG(CASE WHEN is_churned=1
-                     THEN CAST(billed_months AS DOUBLE) END) AS avg_churned,
-                AVG(CASE WHEN is_churned=0
-                     THEN CAST(billed_months AS DOUBLE) END) AS avg_active,
                 SUM(CASE WHEN is_churned=1 THEN 1 ELSE 0 END) AS cnt_churned,
                 SUM(CASE WHEN is_churned=0 THEN 1 ELSE 0 END) AS cnt_active
             FROM sheet_contracts
             WHERE billed_months IS NOT NULL AND billed_months > 0
         """).df()
-        row = _obs_df.iloc[0]
-        _avg_obs    = row["avg_churned"]
-        _avg_active = row["avg_active"]
-        _churned_count = int(row["cnt_churned"] or 0)
-        _active_count  = int(row["cnt_active"] or 0)
+        _churned_count = int(_cnt_df.iloc[0]["cnt_churned"] or 0)
+        _active_count  = int(_cnt_df.iloc[0]["cnt_active"] or 0)
+
+        # LTV基準：解約済み＋最低期間超え継続中の合算平均
+        _ltv_df = con.execute("""
+            SELECT
+                COUNT(*) AS cnt,
+                AVG(CAST(billed_months AS DOUBLE)) AS avg_ltv
+            FROM sheet_contracts
+            WHERE billed_months IS NOT NULL AND billed_months > 0
+              AND contract_months IS NOT NULL
+              AND (is_churned = 1
+                   OR (is_churned = 0 AND billed_months >= contract_months))
+        """).df()
+        _ltv_row = _ltv_df.iloc[0]
+        _avg_obs         = float(_ltv_row["avg_ltv"]) if _ltv_row["avg_ltv"] is not None else None
+        _ltv_total_count = int(_ltv_row["cnt"] or 0)
 
         # 継続中企業のうち必須期間超えのみ：合計・必須・任意継続 の各平均
         _active_post_df = con.execute("""
@@ -766,8 +775,8 @@ def render_summary():
             "平均継続月数（LTV基準）",
             f"{_avg_obs:.1f}",
             "ヶ月",
-            f"必須 {_mn_str}ヶ月 ＋ 任意継続 {_pm_str}ヶ月"
-            f"（解約済み{_churned_count}社の実測）",
+            f"解約済み{_churned_count}社 ＋ 最低期間超え継続中{_active_past_mand}社"
+            f"（計{_ltv_total_count}社の合算）",
         )
         # 継続中企業の任意継続月数 KPI
         if _avg_active_total is not None:
@@ -932,31 +941,46 @@ def render_summary():
 
     # ── LTV の見方 ─────────────────────────────────────────────────────────────
     if _avg_obs is not None:
-        with st.expander("💡 チャーンレートと平均継続月数の見方（LTV計算ガイド）"):
+        with st.expander("💡 平均継続月数とチャーンレートの計算ガイド"):
             _pm = f"{_post_mand_avg:.1f}" if _post_mand_avg else "—"
             _mn = f"{_mand_avg:.1f}"      if _mand_avg else "—"
             _ltv_pct = f"{_ltv_churn_rate*100:.0f}" if _ltv_churn_rate else "—"
             _er_pct  = f"{_exit_rate*100:.0f}"       if _exit_rate     else "—"
+            _active_now_avg = f"{_avg_active_total:.1f}" if _avg_active_total is not None else "—"
             st.markdown(f"""
 **① 平均継続月数（LTV基準）：{_avg_obs:.1f}ヶ月**
-- 解約済み{_churned_count}社の実測値。LTV計算の最も信頼できる基準値。
-- 内訳：必須期間 **{_mn}ヶ月**（解約不可） ＋ 任意継続 **{_pm}ヶ月**（必須後の実測平均）
-- 継続中のうち必須超え **{_active_past_mand}社** の平均継続：{ f"{_avg_active_total:.1f}ヶ月" if _avg_active_total is not None else "—" }（必須 { f"{_avg_active_mand:.1f}" if _avg_active_mand else "—" }ヶ月 ＋ 任意継続 { f"{_avg_active_post:.1f}" if _avg_active_post else "—" }ヶ月）。必須期間中の企業は除外。将来の実績はさらに伸びる可能性あり。
+
+計算式：
+```
+（解約済み{_churned_count}社の合計継続月数 ＋ 最低期間超え継続中{_active_past_mand}社の現時点合計継続月数）
+÷ 合計{_ltv_total_count}社
+```
+- **解約済み企業**は確定した実績値として含める。
+- **最低期間を超えて継続中の企業**は「少なくともこれだけ続いた」保守的な下限値として含める。最終的な継続月数はさらに伸びるため、この数値は実態より低めに出る。
+- 必須期間中のみの企業（まだ解約できない状態）は除外している。
 
 **② 必須後チャーンレート（LTV用）：{_ltv_pct}%/月**
-- 必須期間後の平均滞在 {_pm}ヶ月 の逆数（1 ÷ {_pm}ヶ月）。
-- LTV公式と整合：必須{_mn}ヶ月 ＋ 1/{_ltv_pct}% = **{_avg_obs:.1f}ヶ月 ✓**
-- この数値を使うと公式が実測値に一致する。
+
+計算式：
+```
+1 ÷ 必須期間後の平均継続月数（{_pm}ヶ月）
+```
+- 必須期間（平均{_mn}ヶ月）が終わった後、毎月どのくらいの割合で解約するかを示す。
+- LTV公式：必須{_mn}ヶ月 ＋ 1/{_ltv_pct}% ≒ **{_avg_obs:.1f}ヶ月**
 
 **③ 月次CR（モニタリング用）：直近の値をKPIで確認**
-- 計算式：当月解約企業数 ÷ 当月に解約権利があった企業数（必須期間経過済み）。
-- 月ごとの動向追跡・アラート検知に適している。
-- ⚠️ この値をLTV公式に使うと過大な継続月数が出るため **LTV計算には使わない**。
-  （理由：長期継続企業が分母に繰り返しカウントされ、見かけの率が低くなる）
 
-**④ 必須期間終了当月の初回離脱率：{_er_pct}%**
-- 「解約できる最初の月に実際に解約した企業」の割合（解約済み{_churned_count}社中）。
-- ✅ CSアクションのトリガー指標：必須期間終了 **1〜2ヶ月前** にフォローを入れることで改善できる可能性がある。
+計算式：
+```
+当月の解約企業数 ÷ 当月に解約権利があった企業数（最低期間経過済み）
+```
+- 月ごとのトレンド追跡・異常検知に使う。
+- ⚠️ この値はLTV計算に使わない（長期継続企業が分母に繰り返し入るため低く出る）。
+
+**④ 最低期間終了当月の初回離脱率：{_er_pct}%**
+
+- 「最低期間が終わった最初の月に解約した企業」の割合。
+- ✅ 最低期間終了の **1〜2ヶ月前** にCSフォローを入れるタイミングの目安になる。
 """)
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
