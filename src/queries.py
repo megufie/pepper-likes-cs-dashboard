@@ -409,7 +409,9 @@ def get_continuation_ranking(con: duckdb.DuckDBPyConnection, limit: int = 15) ->
                 CASE WHEN MAX(CASE WHEN is_churned = 0 THEN 1 ELSE 0 END) = 1
                      THEN '継続中' ELSE '解約済' END                              AS status,
                 MIN(start_date)                                                  AS start_date,
-                MAX(churn_date)                                                  AS churn_date
+                -- 継続中企業（再開含む）は解約日を表示しない
+                CASE WHEN MAX(CASE WHEN is_churned = 0 THEN 1 ELSE 0 END) = 1
+                     THEN NULL ELSE MAX(churn_date) END                          AS churn_date
             FROM sheet_contracts
             WHERE company_name IS NOT NULL
               AND company_name != ''
