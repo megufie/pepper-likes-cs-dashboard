@@ -3210,33 +3210,31 @@ def render_initiatives():
         except Exception:
             kpi_values["zero_apps"] = {"value": "—", "delta": None, "unit": "件"}
 
-        # 各案件応募数（sheet_adoption の月別カラムを集計）
+        # 各案件応募数（DBのapplicationsテーブルから月別集計）
         try:
-            adopt_raw = con.execute("SELECT * FROM sheet_adoption").df()
-            if not adopt_raw.empty:
-                # hire_YYYY-MM / post_YYYY-MM カラムを月別に集計
-                hire_cols = sorted([c for c in adopt_raw.columns if c.startswith("hire_")])
-                post_cols = sorted([c for c in adopt_raw.columns if c.startswith("post_")])
-                months_adopt = []
-                for hc, pc in zip(hire_cols, post_cols):
-                    ym = hc.replace("hire_", "")
-                    months_adopt.append({
-                        "month":  ym,
-                        "hired":  int(adopt_raw[hc].sum()),
-                        "posted": int(adopt_raw[pc].sum()),
-                    })
-                adopt_df = pd.DataFrame(months_adopt)
-                adopt_df = adopt_df[adopt_df["month"] <= _today_ym]
-                if not adopt_df.empty:
-                    latest_a = adopt_df.iloc[-1]
-                    kpi_values["app_count"] = {
-                        "value": f"採用 {int(latest_a['hired'])} 件",
-                        "delta": None,
-                        "unit": "件",
-                    }
-                    kpi_charts["app_count"] = adopt_df
+            adopt_df = con.execute("""
+                SELECT
+                    strftime(CAST(applied_at AS DATE), '%Y-%m') AS month,
+                    COUNT(*) AS total_apps,
+                    SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) AS accepted
+                FROM applications
+                WHERE applied_at IS NOT NULL
+                GROUP BY month
+                ORDER BY month
+            """).df()
+            adopt_df = adopt_df[adopt_df["month"] <= _today_ym]
+            if not adopt_df.empty:
+                latest_a = adopt_df.iloc[-1]
+                prev_a    = adopt_df.iloc[-2] if len(adopt_df) >= 2 else None
+                delta_a   = int(latest_a["total_apps"] - prev_a["total_apps"]) if prev_a is not None else None
+                kpi_values["app_count"] = {
+                    "value": f"{int(latest_a['total_apps']):,} 件",
+                    "delta": delta_a,
+                    "unit": "件",
+                }
+                kpi_charts["app_count"] = adopt_df
         except Exception:
-            kpi_values["app_count"] = {"value": "—", "delta": None, "unit": "件"}
+            kpi_values["app_count"] = {"value": "—（DB未接続）", "delta": None, "unit": "件"}
 
     # ── 各KPIセクション ─────────────────────────────────────────────────────────
     _changed = False
@@ -3424,27 +3422,37 @@ def render_initiatives():
 
                 elif key == "app_count":
                     fig2 = go.Figure()
+                    # 棒グラフ：総応募数
                     fig2.add_trace(go.Bar(
-                        x=chart_df["month"], y=chart_df["hired"],
-                        name="採用数", marker_color=color, opacity=0.8,
+                        x=chart_df["month"], y=chart_df["total_apps"],
+                        name="総応募数", marker_color=f"rgba(91,141,239,0.5)",
+                        hovertemplate="<b>%{x}</b><br>総応募数: %{y:,}<extra></extra>",
                     ))
-                    if "posted" in chart_df.columns:
-                        fig2.add_trace(go.Scatter(
-                            x=chart_df["month"], y=chart_df["posted"],
-                            name="投稿数", mode="lines+markers",
-                            line=dict(color=MINT, width=2), marker=dict(size=5),
-                            yaxis="y2",
-                        ))
+                    # 折れ線：採用数
+                    fig2.add_trace(go.Scatter(
+                        x=chart_df["month"], y=chart_df["accepted"],
+                        name="採用数", mode="lines+markers",
+                        line=dict(color=color, width=2.5),
+                        marker=dict(size=7, color=color),
+                        hovertemplate="<b>%{x}</b><br>採用数: %{y:,}<extra></extra>",
+                    ))
+                    # 施策マーカー
+                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                        m = init.get("start_date", "")[:7]
+                        if m in chart_df["month"].values:
+                            fig2.add_vline(x=m, line_dash="dot", line_color=MINT,
+                                annotation_text=init["title"][:10], annotation_position="top",
+                                annotation_font=dict(size=9, color=MINT_DARK))
                     fig2.update_layout(
-                        height=200, margin=dict(l=0, r=0, t=10, b=10),
+                        height=220, margin=dict(l=0, r=0, t=10, b=10),
                         plot_bgcolor="white", paper_bgcolor="white",
-                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9),
+                                   type="category"),
                         yaxis=dict(showgrid=True, gridcolor="#eee", tickfont=dict(size=9)),
-                        yaxis2=dict(overlaying="y", side="right", tickfont=dict(size=9), showgrid=False),
                         legend=dict(orientation="h", y=1.1, font=dict(size=9)),
-                        barmode="group",
                     )
                     st.plotly_chart(fig2, use_container_width=True, config=CHART_CFG)
+                    st.caption("DBのapplicationsテーブルより（2026-03-26以降は同期停止中）")
 
             # 施策リスト + 追加フォーム
             st.markdown("---")
