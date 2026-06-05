@@ -13,3 +13,4 @@ generate_test_data.py
 start.sh
 data/churn_reasons.json
 data/initiatives.json
+data/kpi_history.json

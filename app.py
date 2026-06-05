@@ -36,6 +36,32 @@ def _save_churn_reasons(reasons: dict) -> bool:
     except Exception:
         return False
 
+# ── KPI 月次履歴（スナップショット）────────────────────────────────────────────
+_KPI_HISTORY_FILE = os.path.join(_APP_DIR, "data", "kpi_history.json")
+
+def _load_kpi_history() -> dict:
+    try:
+        if os.path.exists(_KPI_HISTORY_FILE):
+            with open(_KPI_HISTORY_FILE, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _record_kpi_snapshot(key: str, ym: str, value: float) -> None:
+    """当月の値をまだ記録していなければ保存する。"""
+    try:
+        history = _load_kpi_history()
+        if key not in history:
+            history[key] = {}
+        if ym not in history[key]:          # 当月がまだ未記録なら保存
+            history[key][ym] = round(value, 2)
+            os.makedirs(os.path.dirname(_KPI_HISTORY_FILE), exist_ok=True)
+            with open(_KPI_HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
 # ── 施策管理 永続化 ────────────────────────────────────────────────────────────
 _INITIATIVES_FILE = os.path.join(_APP_DIR, "data", "initiatives.json")
 
@@ -728,6 +754,9 @@ def render_summary():
         _ltv_row = _ltv_df.iloc[0]
         _avg_obs         = float(_ltv_row["avg_ltv"]) if _ltv_row["avg_ltv"] is not None else None
         _ltv_total_count = int(_ltv_row["cnt"] or 0)
+        # 当月のLTV平均を履歴に自動記録
+        if _avg_obs is not None:
+            _record_kpi_snapshot("avg_duration", date.today().strftime("%Y-%m"), _avg_obs)
 
         # 継続中企業のうち必須期間超えのみ：合計・必須・任意継続 の各平均
         _active_post_df = con.execute("""
@@ -3117,8 +3146,16 @@ def render_initiatives():
                 "delta": None,
                 "unit": "ヶ月",
             }
-        # 平均継続月数 月別トレンド（解約月ごとの平均）
+        # 平均継続月数 グラフ：月次スナップショット（LTV推移）＋ 解約月別平均を合わせて表示
         try:
+            # ① 月次スナップショット（LTV指標の推移）
+            _history = _load_kpi_history()
+            _snap = _history.get("avg_duration", {})
+            snap_df = pd.DataFrame(
+                [{"month": k, "ltv_avg": v} for k, v in sorted(_snap.items())]
+            ) if _snap else pd.DataFrame()
+
+            # ② 解約月別平均（解約した企業の平均継続月数）
             dur_trend = con.execute("""
                 SELECT
                     strftime(CAST(churn_date AS DATE), '%Y-%m') AS month,
@@ -3131,10 +3168,13 @@ def render_initiatives():
                 GROUP BY month
                 ORDER BY month
             """).df()
-            # 未来日付・極端な外れ値を除外
             dur_trend = dur_trend[dur_trend["month"] <= _today_ym]
-            if not dur_trend.empty:
-                kpi_charts["avg_duration"] = dur_trend
+
+            if not dur_trend.empty or not snap_df.empty:
+                kpi_charts["avg_duration"] = {
+                    "churn_monthly": dur_trend,
+                    "ltv_snapshot":  snap_df,
+                }
         except Exception:
             pass
 
@@ -3254,55 +3294,87 @@ def render_initiatives():
                     st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
 
                 elif key == "avg_duration":
-                    fig_dur = go.Figure()
-                    # 棒グラフ：解約社数
-                    fig_dur.add_trace(go.Bar(
-                        x=chart_df["month"], y=chart_df["churned_count"],
-                        name="解約社数", marker_color="rgba(217,83,79,0.25)",
-                        yaxis="y2",
-                    ))
-                    # 折れ線：平均継続月数
-                    fig_dur.add_trace(go.Scatter(
-                        x=chart_df["month"], y=chart_df["avg_months"],
-                        name="平均継続月数", mode="lines+markers+text",
-                        line=dict(color=color, width=2),
-                        marker=dict(size=6, color=color),
-                        text=[f"{v:.1f}" for v in chart_df["avg_months"]],
-                        textposition="top center",
-                        textfont=dict(size=9, color=color),
-                        hovertemplate="<b>%{x}</b><br>平均: %{y:.1f}ヶ月<extra></extra>",
-                    ))
-                    # 施策開始日マーカー
-                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
-                        m = init.get("start_date", "")[:7]
-                        if m in chart_df["month"].values:
-                            fig_dur.add_vline(
-                                x=m, line_dash="dot", line_color=MINT,
-                                annotation_text=init["title"][:10],
-                                annotation_position="top",
-                                annotation_font=dict(size=9, color=MINT_DARK),
+                    churn_df = chart_df.get("churn_monthly", pd.DataFrame()) if isinstance(chart_df, dict) else chart_df
+                    snap_df  = chart_df.get("ltv_snapshot",  pd.DataFrame()) if isinstance(chart_df, dict) else pd.DataFrame()
+
+                    tab_churn, tab_ltv = st.tabs(["📉 解約月別 平均継続月数", "📈 LTV指標の月次推移"])
+
+                    with tab_churn:
+                        if not churn_df.empty:
+                            fig_dur = go.Figure()
+                            fig_dur.add_trace(go.Bar(
+                                x=churn_df["month"], y=churn_df["churned_count"],
+                                name="解約社数", marker_color="rgba(217,83,79,0.2)",
+                                yaxis="y2",
+                            ))
+                            fig_dur.add_trace(go.Scatter(
+                                x=churn_df["month"], y=churn_df["avg_months"],
+                                name="平均継続月数", mode="lines+markers+text",
+                                line=dict(color=color, width=2),
+                                marker=dict(size=6, color=color),
+                                text=[f"{v:.1f}" for v in churn_df["avg_months"]],
+                                textposition="top center",
+                                textfont=dict(size=9, color=color),
+                                hovertemplate="<b>%{x}</b><br>平均: %{y:.1f}ヶ月<extra></extra>",
+                            ))
+                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                                m = init.get("start_date", "")[:7]
+                                if m in churn_df["month"].values:
+                                    fig_dur.add_vline(x=m, line_dash="dot", line_color=MINT,
+                                        annotation_text=init["title"][:10], annotation_position="top",
+                                        annotation_font=dict(size=9, color=MINT_DARK))
+                            avg_all = churn_df["avg_months"].mean()
+                            fig_dur.add_hline(y=avg_all, line_dash="dot", line_color="#BBB",
+                                annotation_text=f"平均 {avg_all:.1f}ヶ月",
+                                annotation_position="right",
+                                annotation_font=dict(size=9, color="#999"))
+                            fig_dur.update_layout(
+                                height=220, margin=dict(l=0, r=60, t=10, b=10),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                                yaxis=dict(showgrid=True, gridcolor="#eee", ticksuffix="ヶ月",
+                                           tickfont=dict(size=9), rangemode="tozero"),
+                                yaxis2=dict(overlaying="y", side="right", tickfont=dict(size=9),
+                                            showgrid=False, rangemode="tozero"),
+                                legend=dict(orientation="h", y=1.15, font=dict(size=9)),
+                                barmode="overlay",
                             )
-                    # 全期間平均ライン
-                    overall_avg = chart_df["avg_months"].mean()
-                    fig_dur.add_hline(
-                        y=overall_avg, line_dash="dot", line_color="#AAA",
-                        annotation_text=f"平均 {overall_avg:.1f}ヶ月",
-                        annotation_position="right",
-                        annotation_font=dict(size=9, color="#AAA"),
-                    )
-                    fig_dur.update_layout(
-                        height=220, margin=dict(l=0, r=60, t=20, b=10),
-                        plot_bgcolor="white", paper_bgcolor="white",
-                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
-                        yaxis=dict(showgrid=True, gridcolor="#eee",
-                                   ticksuffix="ヶ月", tickfont=dict(size=9), rangemode="tozero"),
-                        yaxis2=dict(overlaying="y", side="right",
-                                    tickfont=dict(size=9), showgrid=False,
-                                    title="解約社数", rangemode="tozero"),
-                        legend=dict(orientation="h", y=1.15, font=dict(size=9)),
-                        barmode="overlay",
-                    )
-                    st.plotly_chart(fig_dur, use_container_width=True, config=CHART_CFG)
+                            st.plotly_chart(fig_dur, use_container_width=True, config=CHART_CFG)
+                        else:
+                            st.caption("データなし")
+
+                    with tab_ltv:
+                        if not snap_df.empty:
+                            fig_ltv = go.Figure()
+                            fig_ltv.add_trace(go.Scatter(
+                                x=snap_df["month"], y=snap_df["ltv_avg"],
+                                mode="lines+markers+text",
+                                line=dict(color=color, width=2.5),
+                                marker=dict(size=8, color=color),
+                                fill="tozeroy", fillcolor=f"rgba(62,158,131,0.08)",
+                                text=[f"{v:.1f}" for v in snap_df["ltv_avg"]],
+                                textposition="top center",
+                                textfont=dict(size=10, color=color),
+                                hovertemplate="<b>%{x}</b><br>LTV平均: %{y:.1f}ヶ月<extra></extra>",
+                            ))
+                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                                m = init.get("start_date", "")[:7]
+                                if m in snap_df["month"].values:
+                                    fig_ltv.add_vline(x=m, line_dash="dot", line_color="#F5A623",
+                                        annotation_text=init["title"][:10], annotation_position="top",
+                                        annotation_font=dict(size=9, color="#8C5E00"))
+                            fig_ltv.update_layout(
+                                height=220, margin=dict(l=0, r=20, t=10, b=10),
+                                plot_bgcolor="white", paper_bgcolor="white",
+                                xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                                yaxis=dict(showgrid=True, gridcolor="#eee", ticksuffix="ヶ月",
+                                           tickfont=dict(size=9), rangemode="tozero"),
+                                showlegend=False,
+                            )
+                            st.plotly_chart(fig_ltv, use_container_width=True, config=CHART_CFG)
+                            st.caption(f"📌 ダッシュボードを開いた月に自動記録。現在 {len(snap_df)} ヶ月分のデータあり。")
+                        else:
+                            st.info("来月以降、ダッシュボードを開くたびに自動でデータが蓄積されます。")
 
                 elif key == "zero_apps":
                     fig_z = go.Figure()
