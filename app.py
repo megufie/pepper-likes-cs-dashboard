@@ -831,6 +831,26 @@ def render_summary():
         active_cont_kpi = kpi("継続中 任意継続月数（現状）", "—", "", "")
         ltv_cr_kpi      = kpi("必須後チャーンレート（LTV用）", "—", "", "")
 
+    # ── 応募者平均（募集中案件のみ）──────────────────────────────────────────────
+    _avg_apps_now  = None
+    _avg_apps_prev = None
+    _apps_count    = None
+    try:
+        _apps_df = con.execute("""
+            SELECT
+                COUNT(*) AS cnt,
+                ROUND(AVG(app_count), 1)      AS avg_now,
+                ROUND(AVG(prev_app_count), 1) AS avg_prev
+            FROM sheet_app_counts
+            WHERE status1 = '募集中'
+        """).df()
+        if not _apps_df.empty:
+            _apps_count    = int(_apps_df.iloc[0]["cnt"])
+            _avg_apps_now  = float(_apps_df.iloc[0]["avg_now"])  if _apps_df.iloc[0]["avg_now"]  is not None else None
+            _avg_apps_prev = float(_apps_df.iloc[0]["avg_prev"]) if _apps_df.iloc[0]["avg_prev"] is not None else None
+    except Exception:
+        pass
+
     # ── KPI 上段：主要3指標 ───────────────────────────────────────────────────
     _cr_today = date.today().strftime("%Y-%m")
     _cr_prev  = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
@@ -855,8 +875,19 @@ def render_summary():
         if contract_status else ""
     )
 
+    # 応募者平均KPIカード
+    _apps_delta_str = ""
+    if _avg_apps_now is not None and _avg_apps_prev is not None and _avg_apps_prev > 0:
+        _delta_apps = round(_avg_apps_now - _avg_apps_prev, 1)
+        _arrow = "▲" if _delta_apps > 0 else "▼"
+        _col   = MINT_DARK if _delta_apps > 0 else "#D9534F"
+        _apps_delta_str = f'<span style="font-size:11px;color:{_col}">{_arrow}{abs(_delta_apps)}</span>'
+    _apps_sub = f"前月 {_avg_apps_prev:.1f} 人/件" if _avg_apps_prev is not None else ""
+    if _apps_count:
+        _apps_sub += f"　募集中 {_apps_count} 件"
+
     st.markdown(
-        '<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">'
+        '<div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">'
         + f'<div class="kpi kpi-accent">'
           f'<div class="kpi-label">現在の契約企業数</div>'
           f'<div class="kpi-row"><span class="kpi-value kpi-value-accent">{_active_count_disp}</span>'
@@ -872,6 +903,13 @@ def render_summary():
           f'<div class="kpi-row"><span class="kpi-value">{f"{_cr_now_val:.1f}" if _cr_now_val is not None else "—"}</span>'
           f'<span class="kpi-unit">%</span></div>'
           f'<div class="kpi-sub">{_cr_now_sub}</div></div>'
+        + f'<div class="kpi">'
+          f'<div class="kpi-label">案件平均応募数（今月）</div>'
+          f'<div class="kpi-row">'
+          f'<span class="kpi-value">{f"{_avg_apps_now:.1f}" if _avg_apps_now is not None else "—"}</span>'
+          f'<span class="kpi-unit">人/件</span>'
+          f'{_apps_delta_str}</div>'
+          f'<div class="kpi-sub">{_apps_sub}</div></div>'
         + "</div>",
         unsafe_allow_html=True,
     )

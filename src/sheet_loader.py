@@ -425,9 +425,17 @@ def fetch_app_counts_sheet() -> pd.DataFrame:
                     pass
 
         try:
-            app_count = int(raw[11].strip()) if raw[11].strip() else 0
+            app_count = int(raw[11].strip()) if len(raw) > 11 and raw[11].strip() else 0
         except (ValueError, IndexError):
             app_count = 0
+
+        try:
+            prev_app_count = int(raw[13].strip()) if len(raw) > 13 and raw[13].strip() else 0
+        except (ValueError, IndexError):
+            prev_app_count = 0
+
+        status1 = raw[6].strip() if len(raw) > 6 else ""
+        status2 = raw[7].strip() if len(raw) > 7 else ""
 
         rows.append({
             "posting_id":      posting_id,
@@ -436,7 +444,10 @@ def fetch_app_counts_sheet() -> pd.DataFrame:
             "company_name":    raw[3].strip() if len(raw) > 3 else None,
             "posting_date":    posting_date,
             "region":          (raw[9].strip() if len(raw) > 9 else None) or None,
+            "status1":         status1,
+            "status2":         status2,
             "app_count":       app_count,
+            "prev_app_count":  prev_app_count,
         })
 
     return pd.DataFrame(rows)
