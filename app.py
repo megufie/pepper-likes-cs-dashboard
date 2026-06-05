@@ -3374,7 +3374,8 @@ def render_initiatives():
                             fig_ltv.update_layout(
                                 height=220, margin=dict(l=0, r=20, t=10, b=10),
                                 plot_bgcolor="white", paper_bgcolor="white",
-                                xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                                xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9),
+                                           type="category"),
                                 yaxis=dict(showgrid=True, gridcolor="#eee", ticksuffix="ヶ月",
                                            tickfont=dict(size=9), rangemode="tozero"),
                                 showlegend=False,
@@ -3410,7 +3411,8 @@ def render_initiatives():
                         fig_z.update_layout(
                             height=220, margin=dict(l=0, r=20, t=20, b=10),
                             plot_bgcolor="white", paper_bgcolor="white",
-                            xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                            xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=11),
+                                       type="category"),
                             yaxis=dict(showgrid=True, gridcolor="#eee",
                                        tickfont=dict(size=10), rangemode="tozero"),
                             showlegend=False,
