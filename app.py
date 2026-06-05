@@ -3267,7 +3267,7 @@ def render_initiatives():
 
             # トレンドチャート
             chart_df = kpi_charts.get(key)
-            if chart_df is not None and not chart_df.empty:
+            if chart_df is not None and (isinstance(chart_df, dict) or not chart_df.empty):
                 init_list = initiatives.get(key, [])
                 active_inits = [i for i in init_list if i.get("status") == "実行中"]
 
