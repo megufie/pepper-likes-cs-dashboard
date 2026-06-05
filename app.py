@@ -699,6 +699,8 @@ def render_summary():
               AND contract_company != ''
         """).fetchone()[0])
         zero_app_source = "sheet"
+        # 当月の応募0件数を履歴に自動記録
+        _record_kpi_snapshot("zero_apps", date.today().strftime("%Y-%m"), zero_app_count)
     except Exception:
         zero_app_count = None
         zero_app_unique_companies = None
@@ -3178,7 +3180,7 @@ def render_initiatives():
         except Exception:
             pass
 
-        # 応募0件（今月 vs 前月）
+        # 応募0件（月次スナップショット履歴 + 今月・前月）
         try:
             zr = con.execute("""
                 SELECT
@@ -3195,10 +3197,16 @@ def render_initiatives():
                 "delta": delta_z if z_prev > 0 else None,
                 "unit": "件",
             }
-            kpi_charts["zero_apps"] = pd.DataFrame({
-                "月":   [_prev_ym, _today_ym],
-                "件数": [z_prev,   z_now],
-            })
+            # 月次スナップショット履歴からグラフデータを作成
+            _hist = _load_kpi_history()
+            _zsnap = _hist.get("zero_apps", {})
+            if _zsnap:
+                snap_z = pd.DataFrame(
+                    [{"month": k, "件数": int(v)} for k, v in sorted(_zsnap.items())]
+                )
+            else:
+                snap_z = pd.DataFrame()
+            kpi_charts["zero_apps"] = snap_z
         except Exception:
             kpi_values["zero_apps"] = {"value": "—", "delta": None, "unit": "件"}
 
@@ -3377,27 +3385,40 @@ def render_initiatives():
                             st.info("来月以降、ダッシュボードを開くたびに自動でデータが蓄積されます。")
 
                 elif key == "zero_apps":
-                    fig_z = go.Figure()
-                    bar_colors = ["#F5A623" if v == chart_df["件数"].iloc[-1]
-                                  else "rgba(245,166,35,0.35)"
-                                  for v in chart_df["件数"]]
-                    fig_z.add_trace(go.Bar(
-                        x=chart_df["月"], y=chart_df["件数"],
-                        marker_color=bar_colors,
-                        text=chart_df["件数"],
-                        textposition="outside",
-                        textfont=dict(size=12, color=color),
-                        hovertemplate="<b>%{x}</b><br>応募0件: %{y}件<extra></extra>",
-                    ))
-                    fig_z.update_layout(
-                        height=200, margin=dict(l=0, r=20, t=20, b=10),
-                        plot_bgcolor="white", paper_bgcolor="white",
-                        xaxis=dict(showgrid=False, tickfont=dict(size=11)),
-                        yaxis=dict(showgrid=True, gridcolor="#eee",
-                                   tickfont=dict(size=10), rangemode="tozero"),
-                        showlegend=False,
-                    )
-                    st.plotly_chart(fig_z, use_container_width=True, config=CHART_CFG)
+                    if not chart_df.empty and "month" in chart_df.columns:
+                        fig_z = go.Figure()
+                        bar_colors = [
+                            color if i == len(chart_df) - 1
+                            else f"rgba(245,166,35,0.4)"
+                            for i in range(len(chart_df))
+                        ]
+                        fig_z.add_trace(go.Bar(
+                            x=chart_df["month"], y=chart_df["件数"],
+                            marker_color=bar_colors,
+                            text=chart_df["件数"],
+                            textposition="outside",
+                            textfont=dict(size=11, color="#333"),
+                            hovertemplate="<b>%{x}</b><br>応募0件: %{y}件<extra></extra>",
+                        ))
+                        # 施策開始日マーカー
+                        for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                            m = init.get("start_date", "")[:7]
+                            if m in chart_df["month"].values:
+                                fig_z.add_vline(x=m, line_dash="dot", line_color=MINT,
+                                    annotation_text=init["title"][:10], annotation_position="top",
+                                    annotation_font=dict(size=9, color=MINT_DARK))
+                        fig_z.update_layout(
+                            height=220, margin=dict(l=0, r=20, t=20, b=10),
+                            plot_bgcolor="white", paper_bgcolor="white",
+                            xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                            yaxis=dict(showgrid=True, gridcolor="#eee",
+                                       tickfont=dict(size=10), rangemode="tozero"),
+                            showlegend=False,
+                        )
+                        st.plotly_chart(fig_z, use_container_width=True, config=CHART_CFG)
+                        st.caption(f"📌 ダッシュボードを開いた月に自動記録。現在 {len(chart_df)} ヶ月分のデータあり。")
+                    else:
+                        st.info("来月以降、ダッシュボードを開くたびに自動でデータが蓄積されます。")
 
                 elif key == "app_count":
                     fig2 = go.Figure()
