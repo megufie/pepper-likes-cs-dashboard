@@ -3079,6 +3079,26 @@ def render_initiatives():
                 "delta": None,
                 "unit": "ヶ月",
             }
+        # 平均継続月数 月別トレンド（解約月ごとの平均）
+        try:
+            dur_trend = con.execute("""
+                SELECT
+                    strftime(CAST(churn_date AS DATE), '%Y-%m') AS month,
+                    COUNT(*) AS churned_count,
+                    ROUND(AVG(billed_months), 2) AS avg_months
+                FROM sheet_contracts
+                WHERE is_churned = 1
+                  AND churn_date IS NOT NULL
+                  AND billed_months IS NOT NULL AND billed_months > 0
+                GROUP BY month
+                ORDER BY month
+            """).df()
+            # 未来日付・極端な外れ値を除外
+            dur_trend = dur_trend[dur_trend["month"] <= _today_ym]
+            if not dur_trend.empty:
+                kpi_charts["avg_duration"] = dur_trend
+        except Exception:
+            pass
 
         # 応募0件
         try:
@@ -3172,6 +3192,57 @@ def render_initiatives():
                         showlegend=False,
                     )
                     st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
+
+                elif key == "avg_duration":
+                    fig_dur = go.Figure()
+                    # 棒グラフ：解約社数
+                    fig_dur.add_trace(go.Bar(
+                        x=chart_df["month"], y=chart_df["churned_count"],
+                        name="解約社数", marker_color="rgba(217,83,79,0.25)",
+                        yaxis="y2",
+                    ))
+                    # 折れ線：平均継続月数
+                    fig_dur.add_trace(go.Scatter(
+                        x=chart_df["month"], y=chart_df["avg_months"],
+                        name="平均継続月数", mode="lines+markers+text",
+                        line=dict(color=color, width=2),
+                        marker=dict(size=6, color=color),
+                        text=[f"{v:.1f}" for v in chart_df["avg_months"]],
+                        textposition="top center",
+                        textfont=dict(size=9, color=color),
+                        hovertemplate="<b>%{x}</b><br>平均: %{y:.1f}ヶ月<extra></extra>",
+                    ))
+                    # 施策開始日マーカー
+                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                        m = init.get("start_date", "")[:7]
+                        if m in chart_df["month"].values:
+                            fig_dur.add_vline(
+                                x=m, line_dash="dot", line_color=MINT,
+                                annotation_text=init["title"][:10],
+                                annotation_position="top",
+                                annotation_font=dict(size=9, color=MINT_DARK),
+                            )
+                    # 全期間平均ライン
+                    overall_avg = chart_df["avg_months"].mean()
+                    fig_dur.add_hline(
+                        y=overall_avg, line_dash="dot", line_color="#AAA",
+                        annotation_text=f"平均 {overall_avg:.1f}ヶ月",
+                        annotation_position="right",
+                        annotation_font=dict(size=9, color="#AAA"),
+                    )
+                    fig_dur.update_layout(
+                        height=220, margin=dict(l=0, r=60, t=20, b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                        yaxis=dict(showgrid=True, gridcolor="#eee",
+                                   ticksuffix="ヶ月", tickfont=dict(size=9), rangemode="tozero"),
+                        yaxis2=dict(overlaying="y", side="right",
+                                    tickfont=dict(size=9), showgrid=False,
+                                    title="解約社数", rangemode="tozero"),
+                        legend=dict(orientation="h", y=1.15, font=dict(size=9)),
+                        barmode="overlay",
+                    )
+                    st.plotly_chart(fig_dur, use_container_width=True, config=CHART_CFG)
 
                 elif key == "app_count":
                     fig2 = go.Figure()
