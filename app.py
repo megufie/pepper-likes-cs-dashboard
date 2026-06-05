@@ -3100,33 +3100,55 @@ def render_initiatives():
         except Exception:
             pass
 
-        # 応募0件
+        # 応募0件（今月 vs 前月）
         try:
-            z = con.execute("""
-                SELECT COUNT(*) FROM sheet_individual_check
+            zr = con.execute("""
+                SELECT
+                    COUNT(CASE WHEN COALESCE(apps_count,0) = 0 THEN 1 END)      AS zero_now,
+                    COUNT(CASE WHEN COALESCE(prev_apps_count,0) = 0 THEN 1 END) AS zero_prev
+                FROM sheet_individual_check
                 WHERE status1 = '募集中'
                   AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
-                  AND COALESCE(apps_count, 0) = 0
-            """).fetchone()[0]
-            kpi_values["zero_apps"] = {"value": f"{z}件", "delta": None, "unit": "件"}
+            """).fetchone()
+            z_now, z_prev = int(zr[0]), int(zr[1])
+            delta_z = z_now - z_prev
+            kpi_values["zero_apps"] = {
+                "value": f"{z_now}件",
+                "delta": delta_z if z_prev > 0 else None,
+                "unit": "件",
+            }
+            kpi_charts["zero_apps"] = pd.DataFrame({
+                "月":   [_prev_ym, _today_ym],
+                "件数": [z_prev,   z_now],
+            })
         except Exception:
             kpi_values["zero_apps"] = {"value": "—", "delta": None, "unit": "件"}
 
-        # 案件応募数（月別採用シートから）
+        # 各案件応募数（sheet_adoption の月別カラムを集計）
         try:
-            adopt = con.execute("""
-                SELECT month, hired, posted
-                FROM sheet_adoption_counts
-                ORDER BY month DESC LIMIT 12
-            """).df()
-            if not adopt.empty:
-                latest = adopt.iloc[0]
-                kpi_values["app_count"] = {
-                    "value": f"採用 {int(latest['hired'])} 件",
-                    "delta": None,
-                    "unit": "件",
-                }
-                kpi_charts["app_count"] = adopt.iloc[::-1].reset_index(drop=True)
+            adopt_raw = con.execute("SELECT * FROM sheet_adoption").df()
+            if not adopt_raw.empty:
+                # hire_YYYY-MM / post_YYYY-MM カラムを月別に集計
+                hire_cols = sorted([c for c in adopt_raw.columns if c.startswith("hire_")])
+                post_cols = sorted([c for c in adopt_raw.columns if c.startswith("post_")])
+                months_adopt = []
+                for hc, pc in zip(hire_cols, post_cols):
+                    ym = hc.replace("hire_", "")
+                    months_adopt.append({
+                        "month":  ym,
+                        "hired":  int(adopt_raw[hc].sum()),
+                        "posted": int(adopt_raw[pc].sum()),
+                    })
+                adopt_df = pd.DataFrame(months_adopt)
+                adopt_df = adopt_df[adopt_df["month"] <= _today_ym]
+                if not adopt_df.empty:
+                    latest_a = adopt_df.iloc[-1]
+                    kpi_values["app_count"] = {
+                        "value": f"採用 {int(latest_a['hired'])} 件",
+                        "delta": None,
+                        "unit": "件",
+                    }
+                    kpi_charts["app_count"] = adopt_df
         except Exception:
             kpi_values["app_count"] = {"value": "—", "delta": None, "unit": "件"}
 
@@ -3243,6 +3265,29 @@ def render_initiatives():
                         barmode="overlay",
                     )
                     st.plotly_chart(fig_dur, use_container_width=True, config=CHART_CFG)
+
+                elif key == "zero_apps":
+                    fig_z = go.Figure()
+                    bar_colors = ["#F5A623" if v == chart_df["件数"].iloc[-1]
+                                  else "rgba(245,166,35,0.35)"
+                                  for v in chart_df["件数"]]
+                    fig_z.add_trace(go.Bar(
+                        x=chart_df["月"], y=chart_df["件数"],
+                        marker_color=bar_colors,
+                        text=chart_df["件数"],
+                        textposition="outside",
+                        textfont=dict(size=12, color=color),
+                        hovertemplate="<b>%{x}</b><br>応募0件: %{y}件<extra></extra>",
+                    ))
+                    fig_z.update_layout(
+                        height=200, margin=dict(l=0, r=20, t=20, b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(showgrid=False, tickfont=dict(size=11)),
+                        yaxis=dict(showgrid=True, gridcolor="#eee",
+                                   tickfont=dict(size=10), rangemode="tozero"),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_z, use_container_width=True, config=CHART_CFG)
 
                 elif key == "app_count":
                     fig2 = go.Figure()
