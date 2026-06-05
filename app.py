@@ -35,6 +35,27 @@ def _save_churn_reasons(reasons: dict) -> bool:
         return True
     except Exception:
         return False
+
+# ── 施策管理 永続化 ────────────────────────────────────────────────────────────
+_INITIATIVES_FILE = os.path.join(_APP_DIR, "data", "initiatives.json")
+
+def _load_initiatives() -> dict:
+    try:
+        if os.path.exists(_INITIATIVES_FILE):
+            with open(_INITIATIVES_FILE, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"churn_rate": [], "avg_duration": [], "zero_apps": [], "app_count": []}
+
+def _save_initiatives(data: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(_INITIATIVES_FILE), exist_ok=True)
+        with open(_INITIATIVES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 _icon = Image.open(_icon_path) if os.path.exists(_icon_path) else "🌶️"
 
 st.set_page_config(
@@ -517,6 +538,7 @@ NAV_SECTIONS = [
         ("応募分析",   "applications"),
     ]),
     ("業務", [
+        ("施策管理",   "initiatives"),
         ("未回収債権", "uncollected"),
         ("CS業務用",   "cs_ops"),
         ("利用状況",   "usage"),
@@ -2992,6 +3014,259 @@ def render_usage():
             _render_monthly(raw_pm, col_map[metric_sel], label_map[metric_sel], "件")
 
 
+# ── Page: 施策管理 ────────────────────────────────────────────────────────────
+
+def render_initiatives():
+    page_header("施策管理", "各KPIに対する実行中・完了施策を記録し、数値の変動と照らし合わせる")
+
+    initiatives = _load_initiatives()
+
+    KPI_CONFIG = [
+        {
+            "key":   "churn_rate",
+            "label": "📉 チャーンレート",
+            "desc":  "月次チャーンレート（最低期間経過済み企業の解約率）",
+            "color": "#D9534F",
+        },
+        {
+            "key":   "avg_duration",
+            "label": "📅 平均継続月数",
+            "desc":  "解約済み＋最低期間超え継続中企業の合算平均",
+            "color": MINT_DARK,
+        },
+        {
+            "key":   "zero_apps",
+            "label": "⚠️ 応募0件 案件数",
+            "desc":  "募集中×応募0件の案件数",
+            "color": "#F5A623",
+        },
+        {
+            "key":   "app_count",
+            "label": "📊 各案件応募数",
+            "desc":  "月別の応募数・採用数トレンド",
+            "color": "#5B8DEF",
+        },
+    ]
+
+    # ── 現在値を取得 ────────────────────────────────────────────────────────────
+    sheet_ok = queries.sheet_available(con)
+    _today_ym = date.today().strftime("%Y-%m")
+    _prev_ym  = (date.today().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+    kpi_values = {}
+    kpi_charts = {}
+
+    if sheet_ok:
+        # チャーンレート
+        cr_df = queries.get_monthly_churn_rate(con)
+        if not cr_df.empty:
+            _now  = cr_df[cr_df["month"] == _today_ym]
+            _prev = cr_df[cr_df["month"] == _prev_ym]
+            now_val  = _now.iloc[0]["churn_rate"]  if not _now.empty  else None
+            prev_val = _prev.iloc[0]["churn_rate"] if not _prev.empty else None
+            kpi_values["churn_rate"] = {
+                "value": f"{now_val:.1f}%" if now_val else "—",
+                "delta": round(now_val - prev_val, 1) if (now_val and prev_val) else None,
+                "unit": "%",
+            }
+            kpi_charts["churn_rate"] = cr_df.dropna(subset=["churn_rate"]).tail(12)
+
+        # 平均継続月数
+        dur = queries.get_avg_duration_all(con)
+        if dur:
+            kpi_values["avg_duration"] = {
+                "value": f"{dur.get('avg_all', 0):.1f}ヶ月",
+                "delta": None,
+                "unit": "ヶ月",
+            }
+
+        # 応募0件
+        try:
+            z = con.execute("""
+                SELECT COUNT(*) FROM sheet_individual_check
+                WHERE status1 = '募集中'
+                  AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
+                  AND COALESCE(apps_count, 0) = 0
+            """).fetchone()[0]
+            kpi_values["zero_apps"] = {"value": f"{z}件", "delta": None, "unit": "件"}
+        except Exception:
+            kpi_values["zero_apps"] = {"value": "—", "delta": None, "unit": "件"}
+
+        # 案件応募数（月別採用シートから）
+        try:
+            adopt = con.execute("""
+                SELECT month, hired, posted
+                FROM sheet_adoption_counts
+                ORDER BY month DESC LIMIT 12
+            """).df()
+            if not adopt.empty:
+                latest = adopt.iloc[0]
+                kpi_values["app_count"] = {
+                    "value": f"採用 {int(latest['hired'])} 件",
+                    "delta": None,
+                    "unit": "件",
+                }
+                kpi_charts["app_count"] = adopt.iloc[::-1].reset_index(drop=True)
+        except Exception:
+            kpi_values["app_count"] = {"value": "—", "delta": None, "unit": "件"}
+
+    # ── 各KPIセクション ─────────────────────────────────────────────────────────
+    _changed = False
+
+    for cfg in KPI_CONFIG:
+        key   = cfg["key"]
+        color = cfg["color"]
+        val   = kpi_values.get(key, {"value": "—", "delta": None})
+
+        with st.container(border=True):
+            # ヘッダー：KPI名 + 現在値
+            c_title, c_val = st.columns([3, 1])
+            with c_title:
+                section(cfg["label"], cfg["desc"])
+            with c_val:
+                delta_str = ""
+                if val["delta"] is not None:
+                    arrow = "▲" if val["delta"] > 0 else "▼"
+                    delta_color = "#D9534F" if (key == "churn_rate" and val["delta"] > 0) or \
+                                              (key != "churn_rate" and val["delta"] < 0) else MINT_DARK
+                    delta_str = f'<span style="font-size:12px;color:{delta_color}">{arrow}{abs(val["delta"])}</span>'
+                st.markdown(
+                    f'<div style="text-align:right">'
+                    f'<span style="font-size:28px;font-weight:700;color:{color}">{val["value"]}</span>'
+                    f' {delta_str}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # トレンドチャート
+            chart_df = kpi_charts.get(key)
+            if chart_df is not None and not chart_df.empty:
+                init_list = initiatives.get(key, [])
+                active_inits = [i for i in init_list if i.get("status") == "実行中"]
+
+                if key == "churn_rate":
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=chart_df["month"], y=chart_df["churn_rate"],
+                        mode="lines+markers",
+                        line=dict(color=color, width=2),
+                        marker=dict(size=6),
+                        fill="tozeroy", fillcolor=f"rgba(217,83,79,0.08)",
+                        hovertemplate="<b>%{x}</b><br>CR: %{y:.1f}%<extra></extra>",
+                    ))
+                    # 施策開始日を縦線で表示
+                    for init in active_inits:
+                        if init.get("start_date") and init["start_date"][:7] in chart_df["month"].values:
+                            fig.add_vline(
+                                x=init["start_date"][:7],
+                                line_dash="dot", line_color=MINT,
+                                annotation_text=init["title"][:10],
+                                annotation_position="top",
+                                annotation_font=dict(size=9, color=MINT_DARK),
+                            )
+                    fig.update_layout(
+                        height=200, margin=dict(l=0, r=0, t=20, b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                        yaxis=dict(showgrid=True, gridcolor="#eee", ticksuffix="%",
+                                   tickfont=dict(size=9), rangemode="tozero"),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig, use_container_width=True, config=CHART_CFG)
+
+                elif key == "app_count":
+                    fig2 = go.Figure()
+                    fig2.add_trace(go.Bar(
+                        x=chart_df["month"], y=chart_df["hired"],
+                        name="採用数", marker_color=color, opacity=0.8,
+                    ))
+                    if "posted" in chart_df.columns:
+                        fig2.add_trace(go.Scatter(
+                            x=chart_df["month"], y=chart_df["posted"],
+                            name="投稿数", mode="lines+markers",
+                            line=dict(color=MINT, width=2), marker=dict(size=5),
+                            yaxis="y2",
+                        ))
+                    fig2.update_layout(
+                        height=200, margin=dict(l=0, r=0, t=10, b=10),
+                        plot_bgcolor="white", paper_bgcolor="white",
+                        xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=9)),
+                        yaxis=dict(showgrid=True, gridcolor="#eee", tickfont=dict(size=9)),
+                        yaxis2=dict(overlaying="y", side="right", tickfont=dict(size=9), showgrid=False),
+                        legend=dict(orientation="h", y=1.1, font=dict(size=9)),
+                        barmode="group",
+                    )
+                    st.plotly_chart(fig2, use_container_width=True, config=CHART_CFG)
+
+            # 施策リスト + 追加フォーム
+            st.markdown("---")
+            init_list = initiatives.get(key, [])
+
+            # 既存施策を表示
+            if init_list:
+                for idx, init in enumerate(init_list):
+                    status_color = MINT_DARK if init.get("status") == "実行中" else "#999"
+                    status_bg    = MINT_BG   if init.get("status") == "実行中" else "#F5F5F5"
+                    col_info, col_toggle, col_del = st.columns([6, 1.2, 0.8])
+                    with col_info:
+                        st.markdown(
+                            f'<div style="padding:8px 12px;border-radius:8px;background:{status_bg};">'
+                            f'<span style="font-weight:700;color:{status_color};font-size:13px">'
+                            f'{"🟢" if init.get("status")=="実行中" else "✅"} {init["title"]}</span>'
+                            f'<span style="color:#999;font-size:11px;margin-left:10px">{init.get("start_date","")}</span>'
+                            f'<br><span style="color:#555;font-size:12px">{init.get("description","")}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    with col_toggle:
+                        new_status = "完了" if init.get("status") == "実行中" else "実行中"
+                        if st.button(
+                            "✅ 完了" if init.get("status") == "実行中" else "↩ 再開",
+                            key=f"toggle_{key}_{idx}",
+                            use_container_width=True,
+                        ):
+                            initiatives[key][idx]["status"] = new_status
+                            _save_initiatives(initiatives)
+                            st.rerun()
+                    with col_del:
+                        if st.button("🗑", key=f"del_{key}_{idx}", use_container_width=True):
+                            initiatives[key].pop(idx)
+                            _save_initiatives(initiatives)
+                            st.rerun()
+                    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+            else:
+                st.caption("まだ施策が登録されていません。")
+
+            # 新規追加フォーム
+            with st.expander("＋ 新しい施策を追加"):
+                col_a, col_b = st.columns([2, 1])
+                with col_a:
+                    new_title = st.text_input("施策名", key=f"new_title_{key}",
+                                              placeholder="例：最低期間終了前フォロー強化")
+                    new_desc  = st.text_area("詳細（任意）", key=f"new_desc_{key}",
+                                             placeholder="施策の内容・目的・担当者など", height=80)
+                with col_b:
+                    new_date  = st.date_input("開始日", key=f"new_date_{key}",
+                                              value=date.today())
+                if st.button("追加する", key=f"add_{key}", type="primary"):
+                    if new_title:
+                        if key not in initiatives:
+                            initiatives[key] = []
+                        initiatives[key].append({
+                            "title":       new_title,
+                            "description": new_desc,
+                            "start_date":  str(new_date),
+                            "status":      "実行中",
+                            "added_at":    str(date.today()),
+                        })
+                        _save_initiatives(initiatives)
+                        st.success("施策を追加しました！")
+                        st.rerun()
+                    else:
+                        st.warning("施策名を入力してください。")
+
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 
 {
@@ -2999,6 +3274,7 @@ def render_usage():
     "retention":    render_retention,
     "churn":        render_churn,
     "applications": render_applications,
+    "initiatives":  render_initiatives,
     "uncollected":  render_uncollected,
     "cs_ops":       render_cs_ops,
     "usage":        render_usage,

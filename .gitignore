@@ -12,3 +12,4 @@ discover_db*.py
 generate_test_data.py
 start.sh
 data/churn_reasons.json
+data/initiatives.json
