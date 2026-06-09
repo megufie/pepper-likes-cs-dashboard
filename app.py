@@ -3493,18 +3493,20 @@ def render_initiatives():
             else:
                 st.caption("まだ施策が登録されていません。")
 
-            # 新規追加フォーム
+            # 新規追加フォーム（st.form を使うことでボタンクリック時に入力値が消えない）
             with st.expander("＋ 新しい施策を追加"):
-                col_a, col_b = st.columns([2, 1])
-                with col_a:
-                    new_title = st.text_input("施策名", key=f"new_title_{key}",
-                                              placeholder="例：最低期間終了前フォロー強化")
-                    new_desc  = st.text_area("詳細（任意）", key=f"new_desc_{key}",
-                                             placeholder="施策の内容・目的・担当者など", height=80)
-                with col_b:
-                    new_date  = st.date_input("開始日", key=f"new_date_{key}",
-                                              value=date.today())
-                if st.button("追加する", key=f"add_{key}", type="primary"):
+                with st.form(key=f"form_{key}", clear_on_submit=True):
+                    col_a, col_b = st.columns([2, 1])
+                    with col_a:
+                        new_title = st.text_input("施策名",
+                                                  placeholder="例：最低期間終了前フォロー強化")
+                        new_desc  = st.text_area("詳細（任意）",
+                                                 placeholder="施策の内容・目的・担当者など", height=80)
+                    with col_b:
+                        new_date  = st.date_input("開始日", value=date.today())
+                    submitted = st.form_submit_button("追加する", type="primary",
+                                                      use_container_width=True)
+                if submitted:
                     if new_title:
                         if key not in initiatives:
                             initiatives[key] = []
