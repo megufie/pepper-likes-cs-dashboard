@@ -652,9 +652,10 @@ def render_summary():
     # 月次チャーンレート（必須期間ベース）
     churn_rate_df = queries.get_monthly_churn_rate(con) if sheet_ok else pd.DataFrame()
 
-    # 契約ステータス集計（D列）
+    # 契約ステータス集計（get_connection()内でキャッシュ済み → DuckDBから取得）
     try:
-        contract_status = sheet_loader.fetch_contract_status_counts()
+        _cs_df = con.execute("SELECT * FROM sheet_contract_status LIMIT 1").df()
+        contract_status = _cs_df.iloc[0].to_dict() if not _cs_df.empty else None
     except Exception:
         contract_status = None
 

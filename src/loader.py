@@ -547,6 +547,26 @@ def _load_slack_churn_reports(con: duckdb.DuckDBPyConnection) -> None:
         print(f"[slack_loader] WARNING: {type(e).__name__}: {e}", file=sys.stderr)
 
 
+def _load_contract_status_sheet(con: duckdb.DuckDBPyConnection) -> None:
+    """gid=1840131021 のD列ステータス集計 → `sheet_contract_status` テーブルに登録。
+    render_summary() から毎回 Google Sheets を叩くのを防ぐためキャッシュ内で実行する。
+    """
+    try:
+        from src import sheet_loader
+    except ImportError:
+        return
+    if not sheet_loader.credentials_available():
+        return
+    try:
+        import pandas as pd
+        d = sheet_loader.fetch_contract_status_counts()
+        df = pd.DataFrame([d])
+        con.register("sheet_contract_status", df)
+    except Exception as e:
+        import sys
+        print(f"[sheet_loader/contract_status] WARNING: {type(e).__name__}: {e}", file=sys.stderr)
+
+
 @st.cache_resource
 def get_connection() -> duckdb.DuckDBPyConnection:
     import sys
@@ -580,4 +600,6 @@ def get_connection() -> duckdb.DuckDBPyConnection:
     _load_churn_detail_sheet(con)
     _load_timeline_source_sheet(con)
     _load_slack_churn_reports(con)
+    # 契約ステータス集計をキャッシュ内で実行（render毎に叩かないため）
+    _load_contract_status_sheet(con)
     return con
