@@ -3327,9 +3327,17 @@ def render_initiatives():
                             for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in churn_df["month"].values:
-                                    fig_dur.add_vline(x=m, line_dash="dot", line_color=MINT,
-                                        annotation_text=init["title"][:10], annotation_position="top",
-                                        annotation_font=dict(size=9, color=MINT_DARK))
+                                    fig_dur.add_shape(
+                                        type="line", x0=m, x1=m, y0=0, y1=1,
+                                        xref="x", yref="paper",
+                                        line=dict(color=MINT, dash="dot", width=1.5),
+                                    )
+                                    fig_dur.add_annotation(
+                                        x=m, y=1, xref="x", yref="paper",
+                                        text=init["title"][:10], showarrow=False,
+                                        font=dict(size=9, color=MINT_DARK),
+                                        yanchor="bottom",
+                                    )
                             avg_all = churn_df["avg_months"].mean()
                             fig_dur.add_hline(y=avg_all, line_dash="dot", line_color="#BBB",
                                 annotation_text=f"平均 {avg_all:.1f}ヶ月",
@@ -3368,9 +3376,17 @@ def render_initiatives():
                             for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in snap_df["month"].values:
-                                    fig_ltv.add_vline(x=m, line_dash="dot", line_color="#F5A623",
-                                        annotation_text=init["title"][:10], annotation_position="top",
-                                        annotation_font=dict(size=9, color="#8C5E00"))
+                                    fig_ltv.add_shape(
+                                        type="line", x0=m, x1=m, y0=0, y1=1,
+                                        xref="x", yref="paper",
+                                        line=dict(color="#F5A623", dash="dot", width=1.5),
+                                    )
+                                    fig_ltv.add_annotation(
+                                        x=m, y=1, xref="x", yref="paper",
+                                        text=init["title"][:10], showarrow=False,
+                                        font=dict(size=9, color="#8C5E00"),
+                                        yanchor="bottom",
+                                    )
                             fig_ltv.update_layout(
                                 height=220, margin=dict(l=0, r=20, t=10, b=10),
                                 plot_bgcolor="white", paper_bgcolor="white",
@@ -3405,9 +3421,17 @@ def render_initiatives():
                         for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
                             m = init.get("start_date", "")[:7]
                             if m in chart_df["month"].values:
-                                fig_z.add_vline(x=m, line_dash="dot", line_color=MINT,
-                                    annotation_text=init["title"][:10], annotation_position="top",
-                                    annotation_font=dict(size=9, color=MINT_DARK))
+                                fig_z.add_shape(
+                                    type="line", x0=m, x1=m, y0=0, y1=1,
+                                    xref="x", yref="paper",
+                                    line=dict(color=MINT, dash="dot", width=1.5),
+                                )
+                                fig_z.add_annotation(
+                                    x=m, y=1, xref="x", yref="paper",
+                                    text=init["title"][:10], showarrow=False,
+                                    font=dict(size=9, color=MINT_DARK),
+                                    yanchor="bottom",
+                                )
                         fig_z.update_layout(
                             height=220, margin=dict(l=0, r=20, t=20, b=10),
                             plot_bgcolor="white", paper_bgcolor="white",
@@ -3442,9 +3466,17 @@ def render_initiatives():
                     for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
                         m = init.get("start_date", "")[:7]
                         if m in chart_df["month"].values:
-                            fig2.add_vline(x=m, line_dash="dot", line_color=MINT,
-                                annotation_text=init["title"][:10], annotation_position="top",
-                                annotation_font=dict(size=9, color=MINT_DARK))
+                            fig2.add_shape(
+                                type="line", x0=m, x1=m, y0=0, y1=1,
+                                xref="x", yref="paper",
+                                line=dict(color=MINT, dash="dot", width=1.5),
+                            )
+                            fig2.add_annotation(
+                                x=m, y=1, xref="x", yref="paper",
+                                text=init["title"][:10], showarrow=False,
+                                font=dict(size=9, color=MINT_DARK),
+                                yanchor="bottom",
+                            )
                     fig2.update_layout(
                         height=220, margin=dict(l=0, r=0, t=10, b=10),
                         plot_bgcolor="white", paper_bgcolor="white",
