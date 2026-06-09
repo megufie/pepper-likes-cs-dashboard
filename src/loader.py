@@ -71,8 +71,12 @@ def _make_prod_engine():
 
     engine = sqlalchemy.create_engine(
         url,
-        pool_pre_ping=True,
-        connect_args={"connect_timeout": 10, "read_timeout": 60},
+        pool_pre_ping=False,   # pre_ping も TCP に依存するので無効化
+        connect_args={
+            "connect_timeout": 5,   # TCP接続タイムアウト（秒）
+            "read_timeout":    20,
+            "write_timeout":   20,
+        },
         isolation_level="READ COMMITTED",
     )
 
@@ -545,15 +549,28 @@ def _load_slack_churn_reports(con: duckdb.DuckDBPyConnection) -> None:
 
 @st.cache_resource
 def get_connection() -> duckdb.DuckDBPyConnection:
+    import sys
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout
+
     con = duckdb.connect(":memory:")
+
     if config.DATA_SOURCE == "production_db":
-        try:
+        # MySQL は TCP タイムアウトが長引くことがあるので別スレッドで実行し
+        # 強制タイムアウト（8秒）を設ける
+        def _try_mysql():
             _load_production_tables(con)
-        except Exception as e:
-            import sys
-            print(f"[loader] WARNING: MySQL接続失敗、シートデータのみで起動します: {type(e).__name__}: {e}", file=sys.stderr)
+
+        with ThreadPoolExecutor(max_workers=1) as _ex:
+            _fut = _ex.submit(_try_mysql)
+            try:
+                _fut.result(timeout=8)
+            except _Timeout:
+                print("[loader] WARNING: MySQL接続タイムアウト(8s) — シートデータのみで起動します", file=sys.stderr)
+            except Exception as e:
+                print(f"[loader] WARNING: MySQL接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
     else:
         _load_csv_tables(con)
+
     # Sheet/Slack integration is independent of DATA_SOURCE — load if creds available
     _load_contract_master_sheet(con)
     _load_individual_check_sheet(con)
