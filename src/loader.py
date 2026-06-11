@@ -73,7 +73,7 @@ def _make_prod_engine():
         url,
         pool_pre_ping=False,   # pre_ping も TCP に依存するので無効化
         connect_args={
-            "connect_timeout": 5,   # TCP接続タイムアウト（秒）
+            "connect_timeout": 3,   # TCP接続タイムアウト（秒）
             "read_timeout":    20,
             "write_timeout":   20,
         },
@@ -567,6 +567,16 @@ def _load_contract_status_sheet(con: duckdb.DuckDBPyConnection) -> None:
         print(f"[sheet_loader/contract_status] WARNING: {type(e).__name__}: {e}", file=sys.stderr)
 
 
+def _mysql_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
+    """TCP レベルで MySQL に到達できるか 2 秒以内に確認する。"""
+    import socket
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except (socket.timeout, OSError):
+        return False
+
+
 @st.cache_resource
 def get_connection() -> duckdb.DuckDBPyConnection:
     import sys
@@ -575,21 +585,28 @@ def get_connection() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(":memory:")
 
     if config.DATA_SOURCE == "production_db":
-        # MySQL は TCP タイムアウトが長引くことがあるので別スレッドで実行し
-        # 強制タイムアウト（8秒）を設ける
-        def _try_mysql():
-            _load_production_tables(con)
+        host = config.PROD_DB_HOST or ""
+        port = int(config.PROD_DB_PORT or 3306)
 
-        _ex = ThreadPoolExecutor(max_workers=1)
-        _fut = _ex.submit(_try_mysql)
-        try:
-            _fut.result(timeout=8)
-        except _Timeout:
-            print("[loader] WARNING: MySQL接続タイムアウト(8s) — シートデータのみで起動します", file=sys.stderr)
-        except Exception as e:
-            print(f"[loader] WARNING: MySQL接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
-        finally:
-            _ex.shutdown(wait=False)  # ハング中スレッドを待たずに即リターン
+        if not _mysql_reachable(host, port, timeout=2.0):
+            # TCP レベルで到達不能 → 即スキップ（2 秒以内に判断）
+            print("[loader] WARNING: MySQL 到達不能 — シートデータのみで起動します", file=sys.stderr)
+        else:
+            # 到達可能でも MySQL プロトコルがハングする場合があるので
+            # 別スレッドで実行し 5 秒の上限を設ける
+            def _try_mysql():
+                _load_production_tables(con)
+
+            _ex = ThreadPoolExecutor(max_workers=1)
+            _fut = _ex.submit(_try_mysql)
+            try:
+                _fut.result(timeout=5)
+            except _Timeout:
+                print("[loader] WARNING: MySQL 応答タイムアウト(5s) — シートデータのみで起動します", file=sys.stderr)
+            except Exception as e:
+                print(f"[loader] WARNING: MySQL 接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
+            finally:
+                _ex.shutdown(wait=False)
     else:
         _load_csv_tables(con)
 
