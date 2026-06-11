@@ -577,23 +577,21 @@ def _mysql_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
         return False
 
 
-@st.cache_resource
-def get_connection() -> duckdb.DuckDBPyConnection:
+def _build_connection() -> duckdb.DuckDBPyConnection:
     """
-    全外部通信（MySQL + Google Sheets × 8 + Slack）を 1 つのスレッドで実行し
+    全外部通信（MySQL + Google Sheets × 8 + Slack）を 1 スレッドで実行し
     25 秒の絶対タイムアウトを設ける。どれか 1 本がハングしても必ず返る。
     """
-    import sys
     import socket as _socket
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout
 
     con = duckdb.connect(":memory:")
 
     def _load_all():
-        # スレッド内の全ソケット操作を 10 秒で打ち切る（MySQL・Sheets 両方に効く）
+        # このスレッド開始時点以降に作られる全ソケットに 10 秒上限を設ける
         _socket.setdefaulttimeout(10)
         try:
-            # ── MySQL ────────────────────────────────────────────────────────
+            # ── MySQL ──────────────────────────────────────────────────────
             if config.DATA_SOURCE == "production_db":
                 _host = config.PROD_DB_HOST or ""
                 _port = int(config.PROD_DB_PORT or 3306)
@@ -607,7 +605,7 @@ def get_connection() -> duckdb.DuckDBPyConnection:
             else:
                 _load_csv_tables(con)
 
-            # ── Google Sheets + Slack ────────────────────────────────────────
+            # ── Google Sheets + Slack ───────────────────────────────────────
             for _fn in [
                 _load_contract_master_sheet,
                 _load_individual_check_sheet,
@@ -624,17 +622,29 @@ def get_connection() -> duckdb.DuckDBPyConnection:
                 except Exception as _e:
                     print(f"[loader] {_fn.__name__} 失敗: {_e}", file=sys.stderr)
         finally:
-            _socket.setdefaulttimeout(None)  # プロセス全体のデフォルトを元に戻す
+            _socket.setdefaulttimeout(None)
 
     _ex = ThreadPoolExecutor(max_workers=1)
     _fut = _ex.submit(_load_all)
     try:
-        _fut.result(timeout=25)  # 全体で 25 秒の絶対上限
+        _fut.result(timeout=25)
     except _Timeout:
         print("[loader] WARNING: データロード全体タイムアウト(25s) — 部分データで起動", file=sys.stderr)
     except Exception as _e:
         print(f"[loader] WARNING: ロード失敗 — {_e}", file=sys.stderr)
     finally:
-        _ex.shutdown(wait=False)  # ハング中スレッドを待たずに即返却
+        _ex.shutdown(wait=False)
 
     return con
+
+
+def get_connection() -> duckdb.DuckDBPyConnection:
+    """
+    st.session_state にキャッシュする。
+    - ホットリロード（ファイル変更）では再接続しない
+    - ブラウザリロード（新セッション）のときだけ再接続する
+    """
+    _KEY = "_db_con"
+    if _KEY not in st.session_state or st.session_state[_KEY] is None:
+        st.session_state[_KEY] = _build_connection()
+    return st.session_state[_KEY]
