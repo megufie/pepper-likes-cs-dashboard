@@ -568,7 +568,7 @@ def _load_contract_status_sheet(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def _mysql_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
-    """TCP レベルで MySQL に到達できるか 2 秒以内に確認する。"""
+    """TCP レベルで MySQL に到達できるか確認する。"""
     import socket
     try:
         with socket.create_connection((host, int(port)), timeout=timeout):
@@ -577,74 +577,44 @@ def _mysql_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
         return False
 
 
-def _build_connection() -> duckdb.DuckDBPyConnection:
-    """
-    全外部通信（MySQL + Google Sheets × 8 + Slack）を 1 スレッドで実行し
-    25 秒の絶対タイムアウトを設ける。どれか 1 本がハングしても必ず返る。
-    """
-    import socket as _socket
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout
-
-    con = duckdb.connect(":memory:")
-
-    def _load_all():
-        # このスレッド開始時点以降に作られる全ソケットに 10 秒上限を設ける
-        _socket.setdefaulttimeout(10)
-        try:
-            # ── MySQL ──────────────────────────────────────────────────────
-            if config.DATA_SOURCE == "production_db":
-                _host = config.PROD_DB_HOST or ""
-                _port = int(config.PROD_DB_PORT or 3306)
-                if _mysql_reachable(_host, _port, timeout=2.0):
-                    try:
-                        _load_production_tables(con)
-                    except Exception as _e:
-                        print(f"[loader] MySQL 失敗: {_e}", file=sys.stderr)
-                else:
-                    print("[loader] MySQL 到達不能 — スキップ", file=sys.stderr)
-            else:
-                _load_csv_tables(con)
-
-            # ── Google Sheets + Slack ───────────────────────────────────────
-            for _fn in [
-                _load_contract_master_sheet,
-                _load_individual_check_sheet,
-                _load_adoption_counts_sheet,
-                _load_uncollected_debts_sheet,
-                _load_app_counts_sheet,
-                _load_churn_detail_sheet,
-                _load_timeline_source_sheet,
-                _load_slack_churn_reports,
-                _load_contract_status_sheet,
-            ]:
-                try:
-                    _fn(con)
-                except Exception as _e:
-                    print(f"[loader] {_fn.__name__} 失敗: {_e}", file=sys.stderr)
-        finally:
-            _socket.setdefaulttimeout(None)
-
-    _ex = ThreadPoolExecutor(max_workers=1)
-    _fut = _ex.submit(_load_all)
-    try:
-        _fut.result(timeout=25)
-    except _Timeout:
-        print("[loader] WARNING: データロード全体タイムアウト(25s) — 部分データで起動", file=sys.stderr)
-    except Exception as _e:
-        print(f"[loader] WARNING: ロード失敗 — {_e}", file=sys.stderr)
-    finally:
-        _ex.shutdown(wait=False)
-
-    return con
-
-
+@st.cache_resource(show_spinner="データを読み込んでいます...")
 def get_connection() -> duckdb.DuckDBPyConnection:
     """
-    st.session_state にキャッシュする。
-    - ホットリロード（ファイル変更）では再接続しない
-    - ブラウザリロード（新セッション）のときだけ再接続する
+    サーバープロセス全体で1回だけ実行・キャッシュする。
+    全ユーザーが同じ接続を共有するため、最初の1人だけが待つ。
     """
-    _KEY = "_db_con"
-    if _KEY not in st.session_state or st.session_state[_KEY] is None:
-        st.session_state[_KEY] = _build_connection()
-    return st.session_state[_KEY]
+    import socket
+    socket.setdefaulttimeout(10)
+    con = duckdb.connect(":memory:")
+    try:
+        if config.DATA_SOURCE == "production_db":
+            host = config.PROD_DB_HOST or ""
+            port = int(config.PROD_DB_PORT or 3306)
+            if _mysql_reachable(host, port, timeout=2.0):
+                try:
+                    _load_production_tables(con)
+                except Exception as e:
+                    print(f"[loader] MySQL 失敗: {e}", file=sys.stderr)
+            else:
+                print("[loader] MySQL 到達不能 — スキップ", file=sys.stderr)
+        else:
+            _load_csv_tables(con)
+
+        for fn in [
+            _load_contract_master_sheet,
+            _load_individual_check_sheet,
+            _load_adoption_counts_sheet,
+            _load_uncollected_debts_sheet,
+            _load_app_counts_sheet,
+            _load_churn_detail_sheet,
+            _load_timeline_source_sheet,
+            _load_slack_churn_reports,
+            _load_contract_status_sheet,
+        ]:
+            try:
+                fn(con)
+            except Exception as e:
+                print(f"[loader] {fn.__name__} 失敗: {e}", file=sys.stderr)
+    finally:
+        socket.setdefaulttimeout(None)
+    return con
