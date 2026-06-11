@@ -3087,10 +3087,20 @@ def render_usage():
 # ── Page: 施策管理 ────────────────────────────────────────────────────────────
 
 def render_initiatives():
-    page_header("施策管理", "各KPIに対する実行中・完了施策を記録し、数値の変動と照らし合わせる")
+    page_header("施策管理", "CSチームのタスクと各KPIへの施策を一元管理")
 
+    # Load + migrate: "実行中" → "進行中"
     initiatives = _load_initiatives()
+    _migrated = False
+    for _kk in list(initiatives.keys()):
+        for _item in initiatives[_kk]:
+            if _item.get("status") == "実行中":
+                _item["status"] = "進行中"
+                _migrated = True
+    if _migrated:
+        _save_initiatives(initiatives)
 
+    KPI_KEYS = ["churn_rate", "avg_duration", "zero_apps", "app_count"]
     KPI_CONFIG = [
         {
             "key":   "churn_rate",
@@ -3117,6 +3127,130 @@ def render_initiatives():
             "color": "#5B8DEF",
         },
     ]
+    KPI_LABEL_MAP = {
+        "churn_rate":   ("📉 チャーンレート", "#D9534F", "#FEF0EF"),
+        "avg_duration": ("📅 平均継続月数",   MINT_DARK, MINT_BG),
+        "zero_apps":    ("⚠️ 応募0件",        "#F5A623", "#FEF6E5"),
+        "app_count":    ("📊 各案件応募数",    "#5B8DEF", "#EEF3FE"),
+    }
+    STATUS_STYLE = {
+        "未着手": ("#888888", "#F5F5F5"),
+        "進行中": (MINT_DARK, MINT_BG),
+        "完了":   ("#999999", "#EFEFEF"),
+    }
+
+    # ── タスクボード ──────────────────────────────────────────────────────────────
+    with st.container(border=True):
+        section("📋 タスクボード", "担当者・ステータス・対象KPIを一目で把握")
+
+        all_tasks = []
+        for _kpi_key in KPI_KEYS:
+            for _idx, _task in enumerate(initiatives.get(_kpi_key, [])):
+                all_tasks.append({"_kpi_key": _kpi_key, "_idx": _idx, **_task})
+
+        col_todo, col_wip, col_done = st.columns(3)
+        board_cols = {"未着手": col_todo, "進行中": col_wip, "完了": col_done}
+
+        for _status in ["未着手", "進行中", "完了"]:
+            _dot_color, _col_bg = STATUS_STYLE[_status]
+            _tasks_in = [t for t in all_tasks if t.get("status") == _status]
+            with board_cols[_status]:
+                st.markdown(
+                    f'<div style="background:{_col_bg};border-radius:10px;padding:10px 12px 6px 12px;margin-bottom:8px;">'
+                    f'<span style="font-weight:700;font-size:13px;color:{_dot_color}">● {_status}</span>'
+                    f'&nbsp;&nbsp;<span style="font-size:11px;background:rgba(0,0,0,0.08);border-radius:10px;'
+                    f'padding:2px 8px;color:{_dot_color}">{len(_tasks_in)}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if not _tasks_in:
+                    st.markdown(
+                        '<div style="color:#CCCCCC;font-size:12px;text-align:center;padding:16px 0">タスクなし</div>',
+                        unsafe_allow_html=True,
+                    )
+                for _t in _tasks_in:
+                    _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
+                    _desc = _t.get("description", "")
+                    _desc_html = (
+                        f'<div style="color:#888;font-size:11px;margin-top:4px;line-height:1.5">'
+                        f'{_desc[:60]}{"…" if len(_desc) > 60 else ""}</div>'
+                    ) if _desc else ""
+                    _assignee_html = (
+                        f'<span style="color:#555;font-size:11px;margin-left:6px">👤 {_t["assignee"]}</span>'
+                    ) if _t.get("assignee") else ""
+                    st.markdown(
+                        f'<div style="border:1px solid #E8E8E8;border-left:3px solid {_kc};'
+                        f'border-radius:8px;padding:10px 12px 8px 12px;margin-bottom:6px;background:#FFFFFF;">'
+                        f'<div style="font-weight:700;font-size:13px;color:{INK};line-height:1.4">{_t["title"]}</div>'
+                        f'<div style="margin-top:5px">'
+                        f'<span style="background:{_kb};color:{_kc};border-radius:12px;padding:2px 7px;'
+                        f'font-size:10px;font-weight:600">{_kl}</span>'
+                        f'{_assignee_html}</div>'
+                        f'{_desc_html}'
+                        f'<div style="color:#CCC;font-size:10px;margin-top:5px">{_t.get("start_date","")}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    _bc_main, _bc_del = st.columns([3, 1])
+                    with _bc_main:
+                        if _status == "未着手":
+                            if st.button("▶ 開始", key=f"b_start_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "進行中"
+                                _save_initiatives(initiatives)
+                                st.rerun()
+                        elif _status == "進行中":
+                            if st.button("✅ 完了", key=f"b_done_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "完了"
+                                _save_initiatives(initiatives)
+                                st.rerun()
+                        else:
+                            if st.button("↩ 再開", key=f"b_reopen_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "進行中"
+                                _save_initiatives(initiatives)
+                                st.rerun()
+                    with _bc_del:
+                        if st.button("🗑", key=f"b_del_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                            initiatives[_t["_kpi_key"]].pop(_t["_idx"])
+                            _save_initiatives(initiatives)
+                            st.rerun()
+
+        # 新規タスク追加フォーム
+        st.markdown("---")
+        with st.expander("＋ 新しいタスクを追加"):
+            with st.form("add_task_form", clear_on_submit=True):
+                _col_a, _col_b = st.columns([2, 1])
+                with _col_a:
+                    _new_title    = st.text_input("タスク名 *", placeholder="例：最低期間終了前フォロー強化")
+                    _new_assignee = st.text_input("担当者", placeholder="例：田中")
+                    _new_desc     = st.text_area("詳細（任意）", height=60, placeholder="施策の内容・目的など")
+                with _col_b:
+                    _new_kpi    = st.selectbox(
+                        "対象KPI",
+                        KPI_KEYS,
+                        format_func=lambda k: KPI_LABEL_MAP[k][0],
+                    )
+                    _new_status = st.selectbox("ステータス", ["未着手", "進行中", "完了"])
+                    _new_date   = st.date_input("開始日", value=date.today())
+                _submitted = st.form_submit_button("追加する", type="primary", use_container_width=True)
+            if _submitted:
+                if _new_title:
+                    if _new_kpi not in initiatives:
+                        initiatives[_new_kpi] = []
+                    initiatives[_new_kpi].append({
+                        "title":       _new_title,
+                        "assignee":    _new_assignee,
+                        "description": _new_desc,
+                        "start_date":  str(_new_date),
+                        "status":      _new_status,
+                        "added_at":    str(date.today()),
+                    })
+                    _save_initiatives(initiatives)
+                    st.success(f"タスク「{_new_title}」を追加しました！")
+                    st.rerun()
+                else:
+                    st.warning("タスク名を入力してください。")
+
+    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
 
     # ── 現在値を取得 ────────────────────────────────────────────────────────────
     sheet_ok = queries.sheet_available(con)
@@ -3268,7 +3402,7 @@ def render_initiatives():
             chart_df = kpi_charts.get(key)
             if chart_df is not None and (isinstance(chart_df, dict) or not chart_df.empty):
                 init_list = initiatives.get(key, [])
-                active_inits = [i for i in init_list if i.get("status") == "実行中"]
+                active_inits = [i for i in init_list if i.get("status") == "進行中"]
 
                 if key == "churn_rate":
                     fig = go.Figure()
@@ -3324,7 +3458,7 @@ def render_initiatives():
                                 textfont=dict(size=9, color=color),
                                 hovertemplate="<b>%{x}</b><br>平均: %{y:.1f}ヶ月<extra></extra>",
                             ))
-                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in churn_df["month"].values:
                                     fig_dur.add_shape(
@@ -3373,7 +3507,7 @@ def render_initiatives():
                                 textfont=dict(size=10, color=color),
                                 hovertemplate="<b>%{x}</b><br>LTV平均: %{y:.1f}ヶ月<extra></extra>",
                             ))
-                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in snap_df["month"].values:
                                     fig_ltv.add_shape(
@@ -3418,7 +3552,7 @@ def render_initiatives():
                             hovertemplate="<b>%{x}</b><br>応募0件: %{y}件<extra></extra>",
                         ))
                         # 施策開始日マーカー
-                        for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                        for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
                             m = init.get("start_date", "")[:7]
                             if m in chart_df["month"].values:
                                 fig_z.add_shape(
@@ -3463,7 +3597,7 @@ def render_initiatives():
                         hovertemplate="<b>%{x}</b><br>採用数: %{y:,}<extra></extra>",
                     ))
                     # 施策マーカー
-                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "実行中"]:
+                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
                         m = init.get("start_date", "")[:7]
                         if m in chart_df["month"].values:
                             fig2.add_shape(
@@ -3488,74 +3622,6 @@ def render_initiatives():
                     st.plotly_chart(fig2, use_container_width=True, config=CHART_CFG)
                     st.caption("DBのapplicationsテーブルより（2026-03-26以降は同期停止中）")
 
-            # 施策リスト + 追加フォーム
-            st.markdown("---")
-            init_list = initiatives.get(key, [])
-
-            # 既存施策を表示
-            if init_list:
-                for idx, init in enumerate(init_list):
-                    status_color = MINT_DARK if init.get("status") == "実行中" else "#999"
-                    status_bg    = MINT_BG   if init.get("status") == "実行中" else "#F5F5F5"
-                    col_info, col_toggle, col_del = st.columns([6, 1.2, 0.8])
-                    with col_info:
-                        st.markdown(
-                            f'<div style="padding:8px 12px;border-radius:8px;background:{status_bg};">'
-                            f'<span style="font-weight:700;color:{status_color};font-size:13px">'
-                            f'{"🟢" if init.get("status")=="実行中" else "✅"} {init["title"]}</span>'
-                            f'<span style="color:#999;font-size:11px;margin-left:10px">{init.get("start_date","")}</span>'
-                            f'<br><span style="color:#555;font-size:12px">{init.get("description","")}</span>'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-                    with col_toggle:
-                        new_status = "完了" if init.get("status") == "実行中" else "実行中"
-                        if st.button(
-                            "✅ 完了" if init.get("status") == "実行中" else "↩ 再開",
-                            key=f"toggle_{key}_{idx}",
-                            use_container_width=True,
-                        ):
-                            initiatives[key][idx]["status"] = new_status
-                            _save_initiatives(initiatives)
-                            st.rerun()
-                    with col_del:
-                        if st.button("🗑", key=f"del_{key}_{idx}", use_container_width=True):
-                            initiatives[key].pop(idx)
-                            _save_initiatives(initiatives)
-                            st.rerun()
-                    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
-            else:
-                st.caption("まだ施策が登録されていません。")
-
-            # 新規追加フォーム（st.form を使うことでボタンクリック時に入力値が消えない）
-            with st.expander("＋ 新しい施策を追加"):
-                with st.form(key=f"form_{key}", clear_on_submit=True):
-                    col_a, col_b = st.columns([2, 1])
-                    with col_a:
-                        new_title = st.text_input("施策名",
-                                                  placeholder="例：最低期間終了前フォロー強化")
-                        new_desc  = st.text_area("詳細（任意）",
-                                                 placeholder="施策の内容・目的・担当者など", height=80)
-                    with col_b:
-                        new_date  = st.date_input("開始日", value=date.today())
-                    submitted = st.form_submit_button("追加する", type="primary",
-                                                      use_container_width=True)
-                if submitted:
-                    if new_title:
-                        if key not in initiatives:
-                            initiatives[key] = []
-                        initiatives[key].append({
-                            "title":       new_title,
-                            "description": new_desc,
-                            "start_date":  str(new_date),
-                            "status":      "実行中",
-                            "added_at":    str(date.today()),
-                        })
-                        _save_initiatives(initiatives)
-                        st.success("施策を追加しました！")
-                        st.rerun()
-                    else:
-                        st.warning("施策名を入力してください。")
 
         st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
 
