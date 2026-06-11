@@ -3194,14 +3194,15 @@ def render_initiatives():
             unsafe_allow_html=True,
         )
 
-        # ── タスクアクション（ステータス変更・削除）── ウィジェットはここだけに配置
+        # ── タスクアクション（ステータス変更・編集・削除）── ウィジェットはここだけに配置
         if all_tasks:
             st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
             for _t in all_tasks:
                 _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
                 _cur_status = _t.get("status", "未着手")
                 _dot_color, _ = STATUS_STYLE.get(_cur_status, ("#888", "#F5F5F5"))
-                _ca, _cb, _cc = st.columns([4, 2, 1])
+                _task_edit_key = f"{_t['_kpi_key']}_{_t['_idx']}"
+                _ca, _ce, _cb, _cc = st.columns([4, 1, 2, 1])
                 with _ca:
                     _assignee_disp = f' · 👤 {_t["assignee"]}' if _t.get("assignee") else ""
                     st.markdown(
@@ -3212,6 +3213,13 @@ def render_initiatives():
                         f'</div>',
                         unsafe_allow_html=True,
                     )
+                with _ce:
+                    if st.button("✏️", key=f"b_edit_{_task_edit_key}", use_container_width=True):
+                        if st.session_state.get("_editing_task") == _task_edit_key:
+                            st.session_state.pop("_editing_task", None)
+                        else:
+                            st.session_state["_editing_task"] = _task_edit_key
+                        st.rerun()
                 with _cb:
                     _next_label = {"未着手": "▶ 開始", "進行中": "✅ 完了", "完了": "↩ 再開"}.get(_cur_status, "▶ 開始")
                     _next_status = {"未着手": "進行中", "進行中": "完了", "完了": "進行中"}.get(_cur_status, "進行中")
@@ -3223,6 +3231,54 @@ def render_initiatives():
                     if st.button("🗑", key=f"b_del_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
                         initiatives[_t["_kpi_key"]].pop(_t["_idx"])
                         _save_initiatives(initiatives)
+                        st.rerun()
+
+                # インライン編集フォーム
+                if st.session_state.get("_editing_task") == _task_edit_key:
+                    with st.form(f"edit_task_form_{_task_edit_key}"):
+                        _ec_a, _ec_b = st.columns([2, 1])
+                        with _ec_a:
+                            _edit_title    = st.text_input("タスク名 *", value=_t.get("title", ""))
+                            _edit_assignee = st.text_input("担当者", value=_t.get("assignee", ""))
+                            _edit_desc     = st.text_area("詳細（任意）", value=_t.get("description", ""), height=60)
+                        with _ec_b:
+                            _cur_kpi_idx = KPI_KEYS.index(_t["_kpi_key"]) if _t["_kpi_key"] in KPI_KEYS else 0
+                            _edit_kpi    = st.selectbox("対象KPI", KPI_KEYS, index=_cur_kpi_idx,
+                                                         format_func=lambda k: KPI_LABEL_MAP[k][0])
+                            _status_opts  = ["未着手", "進行中", "完了"]
+                            _edit_status  = st.selectbox("ステータス", _status_opts,
+                                                          index=_status_opts.index(_cur_status) if _cur_status in _status_opts else 0)
+                            try:
+                                _sd = date.fromisoformat(_t["start_date"]) if _t.get("start_date") else date.today()
+                            except ValueError:
+                                _sd = date.today()
+                            _edit_date = st.date_input("開始日", value=_sd)
+                        _ec_sv, _ec_cx = st.columns(2)
+                        with _ec_sv:
+                            _save_submitted = st.form_submit_button("保存", type="primary", use_container_width=True)
+                        with _ec_cx:
+                            _cancel_submitted = st.form_submit_button("キャンセル", use_container_width=True)
+                    if _save_submitted and _edit_title:
+                        _task_data = {
+                            "title":       _edit_title,
+                            "assignee":    _edit_assignee,
+                            "description": _edit_desc,
+                            "start_date":  str(_edit_date),
+                            "status":      _edit_status,
+                            "added_at":    _t.get("added_at", str(date.today())),
+                        }
+                        if _edit_kpi == _t["_kpi_key"]:
+                            initiatives[_t["_kpi_key"]][_t["_idx"]] = _task_data
+                        else:
+                            initiatives[_t["_kpi_key"]].pop(_t["_idx"])
+                            if _edit_kpi not in initiatives:
+                                initiatives[_edit_kpi] = []
+                            initiatives[_edit_kpi].append(_task_data)
+                        _save_initiatives(initiatives)
+                        st.session_state.pop("_editing_task", None)
+                        st.rerun()
+                    if _cancel_submitted:
+                        st.session_state.pop("_editing_task", None)
                         st.rerun()
 
         # 新規タスク追加フォーム
