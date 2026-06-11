@@ -580,14 +580,16 @@ def get_connection() -> duckdb.DuckDBPyConnection:
         def _try_mysql():
             _load_production_tables(con)
 
-        with ThreadPoolExecutor(max_workers=1) as _ex:
-            _fut = _ex.submit(_try_mysql)
-            try:
-                _fut.result(timeout=8)
-            except _Timeout:
-                print("[loader] WARNING: MySQL接続タイムアウト(8s) — シートデータのみで起動します", file=sys.stderr)
-            except Exception as e:
-                print(f"[loader] WARNING: MySQL接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
+        _ex = ThreadPoolExecutor(max_workers=1)
+        _fut = _ex.submit(_try_mysql)
+        try:
+            _fut.result(timeout=8)
+        except _Timeout:
+            print("[loader] WARNING: MySQL接続タイムアウト(8s) — シートデータのみで起動します", file=sys.stderr)
+        except Exception as e:
+            print(f"[loader] WARNING: MySQL接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
+        finally:
+            _ex.shutdown(wait=False)  # ハング中スレッドを待たずに即リターン
     else:
         _load_csv_tables(con)
 
