@@ -579,46 +579,62 @@ def _mysql_reachable(host: str, port: int, timeout: float = 2.0) -> bool:
 
 @st.cache_resource
 def get_connection() -> duckdb.DuckDBPyConnection:
+    """
+    全外部通信（MySQL + Google Sheets × 8 + Slack）を 1 つのスレッドで実行し
+    25 秒の絶対タイムアウトを設ける。どれか 1 本がハングしても必ず返る。
+    """
     import sys
+    import socket as _socket
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout
 
     con = duckdb.connect(":memory:")
 
-    if config.DATA_SOURCE == "production_db":
-        host = config.PROD_DB_HOST or ""
-        port = int(config.PROD_DB_PORT or 3306)
+    def _load_all():
+        # スレッド内の全ソケット操作を 10 秒で打ち切る（MySQL・Sheets 両方に効く）
+        _socket.setdefaulttimeout(10)
+        try:
+            # ── MySQL ────────────────────────────────────────────────────────
+            if config.DATA_SOURCE == "production_db":
+                _host = config.PROD_DB_HOST or ""
+                _port = int(config.PROD_DB_PORT or 3306)
+                if _mysql_reachable(_host, _port, timeout=2.0):
+                    try:
+                        _load_production_tables(con)
+                    except Exception as _e:
+                        print(f"[loader] MySQL 失敗: {_e}", file=sys.stderr)
+                else:
+                    print("[loader] MySQL 到達不能 — スキップ", file=sys.stderr)
+            else:
+                _load_csv_tables(con)
 
-        if not _mysql_reachable(host, port, timeout=2.0):
-            # TCP レベルで到達不能 → 即スキップ（2 秒以内に判断）
-            print("[loader] WARNING: MySQL 到達不能 — シートデータのみで起動します", file=sys.stderr)
-        else:
-            # 到達可能でも MySQL プロトコルがハングする場合があるので
-            # 別スレッドで実行し 5 秒の上限を設ける
-            def _try_mysql():
-                _load_production_tables(con)
+            # ── Google Sheets + Slack ────────────────────────────────────────
+            for _fn in [
+                _load_contract_master_sheet,
+                _load_individual_check_sheet,
+                _load_adoption_counts_sheet,
+                _load_uncollected_debts_sheet,
+                _load_app_counts_sheet,
+                _load_churn_detail_sheet,
+                _load_timeline_source_sheet,
+                _load_slack_churn_reports,
+                _load_contract_status_sheet,
+            ]:
+                try:
+                    _fn(con)
+                except Exception as _e:
+                    print(f"[loader] {_fn.__name__} 失敗: {_e}", file=sys.stderr)
+        finally:
+            _socket.setdefaulttimeout(None)  # プロセス全体のデフォルトを元に戻す
 
-            _ex = ThreadPoolExecutor(max_workers=1)
-            _fut = _ex.submit(_try_mysql)
-            try:
-                _fut.result(timeout=5)
-            except _Timeout:
-                print("[loader] WARNING: MySQL 応答タイムアウト(5s) — シートデータのみで起動します", file=sys.stderr)
-            except Exception as e:
-                print(f"[loader] WARNING: MySQL 接続失敗 — {type(e).__name__}: {e}", file=sys.stderr)
-            finally:
-                _ex.shutdown(wait=False)
-    else:
-        _load_csv_tables(con)
+    _ex = ThreadPoolExecutor(max_workers=1)
+    _fut = _ex.submit(_load_all)
+    try:
+        _fut.result(timeout=25)  # 全体で 25 秒の絶対上限
+    except _Timeout:
+        print("[loader] WARNING: データロード全体タイムアウト(25s) — 部分データで起動", file=sys.stderr)
+    except Exception as _e:
+        print(f"[loader] WARNING: ロード失敗 — {_e}", file=sys.stderr)
+    finally:
+        _ex.shutdown(wait=False)  # ハング中スレッドを待たずに即返却
 
-    # Sheet/Slack integration is independent of DATA_SOURCE — load if creds available
-    _load_contract_master_sheet(con)
-    _load_individual_check_sheet(con)
-    _load_adoption_counts_sheet(con)
-    _load_uncollected_debts_sheet(con)
-    _load_app_counts_sheet(con)
-    _load_churn_detail_sheet(con)
-    _load_timeline_source_sheet(con)
-    _load_slack_churn_reports(con)
-    # 契約ステータス集計をキャッシュ内で実行（render毎に叩かないため）
-    _load_contract_status_sheet(con)
     return con
