@@ -3148,71 +3148,82 @@ def render_initiatives():
             for _idx, _task in enumerate(initiatives.get(_kpi_key, [])):
                 all_tasks.append({"_kpi_key": _kpi_key, "_idx": _idx, **_task})
 
-        col_todo, col_wip, col_done = st.columns(3)
-        board_cols = {"未着手": col_todo, "進行中": col_wip, "完了": col_done}
-
+        # ── カンバンビュー（表示専用 HTML のみ、ウィジェット不使用） ──────────────
+        _board_html_parts = []
         for _status in ["未着手", "進行中", "完了"]:
             _dot_color, _col_bg = STATUS_STYLE[_status]
             _tasks_in = [t for t in all_tasks if t.get("status") == _status]
-            with board_cols[_status]:
-                st.markdown(
-                    f'<div style="background:{_col_bg};border-radius:10px;padding:10px 12px 6px 12px;margin-bottom:8px;">'
-                    f'<span style="font-weight:700;font-size:13px;color:{_dot_color}">● {_status}</span>'
-                    f'&nbsp;&nbsp;<span style="font-size:11px;background:rgba(0,0,0,0.08);border-radius:10px;'
-                    f'padding:2px 8px;color:{_dot_color}">{len(_tasks_in)}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
+            _cards_html = ""
+            if not _tasks_in:
+                _cards_html = '<div style="color:#CCCCCC;font-size:12px;text-align:center;padding:16px 0">タスクなし</div>'
+            for _t in _tasks_in:
+                _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
+                _desc = _t.get("description", "")
+                _assignee = _t.get("assignee", "")
+                _assignee_html = f'<span style="color:#555;font-size:11px;margin-left:6px">👤 {_assignee}</span>' if _assignee else ""
+                _desc_html = (
+                    f'<div style="color:#888;font-size:11px;margin-top:4px;line-height:1.5">'
+                    f'{_desc[:60]}{"…" if len(_desc) > 60 else ""}</div>'
+                ) if _desc else ""
+                _cards_html += (
+                    f'<div style="border:1px solid #E8E8E8;border-left:3px solid {_kc};'
+                    f'border-radius:8px;padding:10px 12px 8px 12px;margin-bottom:6px;background:#FFFFFF;">'
+                    f'<div style="font-weight:700;font-size:13px;color:{INK};line-height:1.4">{_t.get("title","")}</div>'
+                    f'<div style="margin-top:5px">'
+                    f'<span style="background:{_kb};color:{_kc};border-radius:12px;padding:2px 7px;font-size:10px;font-weight:600">{_kl}</span>'
+                    f'{_assignee_html}</div>'
+                    f'{_desc_html}'
+                    f'<div style="color:#CCC;font-size:10px;margin-top:5px">{_t.get("start_date","")}</div>'
+                    f'</div>'
                 )
-                if not _tasks_in:
+            _col_html = (
+                f'<div style="flex:1;min-width:0;">'
+                f'<div style="background:{_col_bg};border-radius:10px;padding:10px 12px 6px 12px;margin-bottom:8px;">'
+                f'<span style="font-weight:700;font-size:13px;color:{_dot_color}">● {_status}</span>'
+                f'&nbsp;&nbsp;<span style="font-size:11px;background:rgba(0,0,0,0.08);border-radius:10px;padding:2px 8px;color:{_dot_color}">{len(_tasks_in)}</span>'
+                f'</div>'
+                f'{_cards_html}'
+                f'</div>'
+            )
+            _board_html_parts.append(_col_html)
+
+        st.markdown(
+            '<div style="display:flex;gap:14px;align-items:flex-start">'
+            + "".join(_board_html_parts)
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── タスクアクション（ステータス変更・削除）── ウィジェットはここだけに配置
+        if all_tasks:
+            st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+            for _t in all_tasks:
+                _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
+                _cur_status = _t.get("status", "未着手")
+                _dot_color, _ = STATUS_STYLE.get(_cur_status, ("#888", "#F5F5F5"))
+                _ca, _cb, _cc = st.columns([4, 2, 1])
+                with _ca:
+                    _assignee_disp = f' · 👤 {_t["assignee"]}' if _t.get("assignee") else ""
                     st.markdown(
-                        '<div style="color:#CCCCCC;font-size:12px;text-align:center;padding:16px 0">タスクなし</div>',
-                        unsafe_allow_html=True,
-                    )
-                for _t in _tasks_in:
-                    _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
-                    _desc = _t.get("description", "")
-                    _desc_html = (
-                        f'<div style="color:#888;font-size:11px;margin-top:4px;line-height:1.5">'
-                        f'{_desc[:60]}{"…" if len(_desc) > 60 else ""}</div>'
-                    ) if _desc else ""
-                    _assignee_html = (
-                        f'<span style="color:#555;font-size:11px;margin-left:6px">👤 {_t["assignee"]}</span>'
-                    ) if _t.get("assignee") else ""
-                    st.markdown(
-                        f'<div style="border:1px solid #E8E8E8;border-left:3px solid {_kc};'
-                        f'border-radius:8px;padding:10px 12px 8px 12px;margin-bottom:6px;background:#FFFFFF;">'
-                        f'<div style="font-weight:700;font-size:13px;color:{INK};line-height:1.4">{_t["title"]}</div>'
-                        f'<div style="margin-top:5px">'
-                        f'<span style="background:{_kb};color:{_kc};border-radius:12px;padding:2px 7px;'
-                        f'font-size:10px;font-weight:600">{_kl}</span>'
-                        f'{_assignee_html}</div>'
-                        f'{_desc_html}'
-                        f'<div style="color:#CCC;font-size:10px;margin-top:5px">{_t.get("start_date","")}</div>'
+                        f'<div style="padding:4px 0;font-size:13px;">'
+                        f'<span style="font-weight:600;color:{INK}">{_t.get("title","")}</span>'
+                        f'<span style="margin-left:8px;background:{_kb};color:{_kc};border-radius:10px;padding:1px 7px;font-size:10px">{_kl}</span>'
+                        f'<span style="color:#999;font-size:11px">{_assignee_disp}</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
-                    _bc_main, _bc_del = st.columns([3, 1])
-                    with _bc_main:
-                        if _status == "未着手":
-                            if st.button("▶ 開始", key=f"b_start_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "進行中"
-                                _save_initiatives(initiatives)
-                                st.rerun()
-                        elif _status == "進行中":
-                            if st.button("✅ 完了", key=f"b_done_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "完了"
-                                _save_initiatives(initiatives)
-                                st.rerun()
-                        else:
-                            if st.button("↩ 再開", key=f"b_reopen_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                                initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = "進行中"
-                                _save_initiatives(initiatives)
-                                st.rerun()
-                    with _bc_del:
-                        if st.button("🗑", key=f"b_del_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                            initiatives[_t["_kpi_key"]].pop(_t["_idx"])
-                            _save_initiatives(initiatives)
-                            st.rerun()
+                with _cb:
+                    _next_label = {"未着手": "▶ 開始", "進行中": "✅ 完了", "完了": "↩ 再開"}.get(_cur_status, "▶ 開始")
+                    _next_status = {"未着手": "進行中", "進行中": "完了", "完了": "進行中"}.get(_cur_status, "進行中")
+                    if st.button(_next_label, key=f"b_mv_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                        initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = _next_status
+                        _save_initiatives(initiatives)
+                        st.rerun()
+                with _cc:
+                    if st.button("🗑", key=f"b_del_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
+                        initiatives[_t["_kpi_key"]].pop(_t["_idx"])
+                        _save_initiatives(initiatives)
+                        st.rerun()
 
         # 新規タスク追加フォーム
         st.markdown("---")
