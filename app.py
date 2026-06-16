@@ -387,6 +387,8 @@ h1, h2, h3 {{ color: {INK} !important; }}
     border-radius: 8px;
     overflow: hidden;
 }}
+[data-testid="stDataEditor"] .dvn-scroller {{ font-size: 11px !important; }}
+[data-testid="stDataEditor"] .gdg-cell {{ font-size: 11px !important; }}
 
 /* ── Selectbox ── */
 [data-baseweb="select"] {{ border-radius: 8px !important; }}
