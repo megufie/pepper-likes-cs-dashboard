@@ -3227,7 +3227,7 @@ def render_initiatives():
             },
             num_rows="dynamic",
             use_container_width=True,
-            hide_index=False,
+            hide_index=True,
             key="task_editor_df",
         )
 
