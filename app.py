@@ -3180,11 +3180,11 @@ def render_initiatives():
                 "詳細":       _t.get("description", ""),
                 "担当者":     _t.get("assignee", ""),
                 "ステータス": _t.get("status", "未着手"),
-                "期日":       _sd,
+                "施策開始日":  _sd,
                 "対象KPI":    KPI_LABEL_MAP.get(_t["_kpi_key"], ("—",))[0],
             })
 
-        _empty_cols = ["タスク名", "詳細", "担当者", "ステータス", "期日", "対象KPI"]
+        _empty_cols = ["タスク名", "詳細", "担当者", "ステータス", "施策開始日", "対象KPI"]
         _df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=_empty_cols)
 
         # ── CSV ダウンロード ────────────────────────────────────────────────
@@ -3206,7 +3206,7 @@ def render_initiatives():
                 "担当者":     st.column_config.TextColumn("担当者", width="small"),
                 "ステータス": st.column_config.SelectboxColumn(
                     "ステータス", options=["未着手", "進行中", "完了"], width="small"),
-                "期日":       st.column_config.DateColumn("期日", format="YYYY/MM/DD", width="small"),
+                "施策開始日":  st.column_config.DateColumn("施策開始日", format="YYYY/MM/DD", width="small"),
                 "対象KPI":    st.column_config.SelectboxColumn(
                     "対象KPI", options=KPI_OPTIONS, width="small"),
             },
@@ -3227,7 +3227,7 @@ def render_initiatives():
                         continue
                     _kpi_label = _row.get("対象KPI") or KPI_OPTIONS[0]
                     _kpi_key   = KPI_LABEL_TO_KEY.get(str(_kpi_label), KPI_KEYS[0])
-                    _period    = _row.get("期日")
+                    _period    = _row.get("施策開始日")
                     _date_str  = str(_period) if _period is not None and str(_period) not in ("NaT", "None", "") else ""
                     _new_init[_kpi_key].append({
                         "title":       _title,
