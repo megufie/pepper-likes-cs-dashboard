@@ -3140,182 +3140,106 @@ def render_initiatives():
     }
 
     # ── タスクボード ──────────────────────────────────────────────────────────────
+    import pandas as pd
+
+    KPI_LABEL_TO_KEY = {v[0]: k for k, v in KPI_LABEL_MAP.items()}
+    KPI_OPTIONS = [KPI_LABEL_MAP[k][0] for k in KPI_KEYS]
+
+    all_tasks = []
+    for _kpi_key in KPI_KEYS:
+        for _task in initiatives.get(_kpi_key, []):
+            all_tasks.append({"_kpi_key": _kpi_key, **_task})
+
     with st.container(border=True):
-        section("📋 タスクボード", "担当者・ステータス・対象KPIを一目で把握")
-
-        all_tasks = []
-        for _kpi_key in KPI_KEYS:
-            for _idx, _task in enumerate(initiatives.get(_kpi_key, [])):
-                all_tasks.append({"_kpi_key": _kpi_key, "_idx": _idx, **_task})
-
-        # ── カンバンビュー（表示専用 HTML のみ、ウィジェット不使用） ──────────────
-        _board_html_parts = []
-        for _status in ["未着手", "進行中", "完了"]:
-            _dot_color, _col_bg = STATUS_STYLE[_status]
-            _tasks_in = [t for t in all_tasks if t.get("status") == _status]
-            _cards_html = ""
-            if not _tasks_in:
-                _cards_html = '<div style="color:#CCCCCC;font-size:12px;text-align:center;padding:16px 0">タスクなし</div>'
-            for _t in _tasks_in:
-                _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
-                _desc = _t.get("description", "")
-                _assignee = _t.get("assignee", "")
-                _assignee_html = f'<span style="color:#555;font-size:11px;margin-left:6px">👤 {_assignee}</span>' if _assignee else ""
-                _desc_html = (
-                    f'<div style="color:#888;font-size:11px;margin-top:4px;line-height:1.5">'
-                    f'{_desc[:60]}{"…" if len(_desc) > 60 else ""}</div>'
-                ) if _desc else ""
-                _cards_html += (
-                    f'<div style="border:1px solid #E8E8E8;border-left:3px solid {_kc};'
-                    f'border-radius:8px;padding:10px 12px 8px 12px;margin-bottom:6px;background:#FFFFFF;">'
-                    f'<div style="font-weight:700;font-size:13px;color:{INK};line-height:1.4">{_t.get("title","")}</div>'
-                    f'<div style="margin-top:5px">'
-                    f'<span style="background:{_kb};color:{_kc};border-radius:12px;padding:2px 7px;font-size:10px;font-weight:600">{_kl}</span>'
-                    f'{_assignee_html}</div>'
-                    f'{_desc_html}'
-                    f'<div style="color:#CCC;font-size:10px;margin-top:5px">{_t.get("start_date","")}</div>'
-                    f'</div>'
-                )
-            _col_html = (
-                f'<div style="flex:1;min-width:0;">'
-                f'<div style="background:{_col_bg};border-radius:10px;padding:10px 12px 6px 12px;margin-bottom:8px;">'
-                f'<span style="font-weight:700;font-size:13px;color:{_dot_color}">● {_status}</span>'
-                f'&nbsp;&nbsp;<span style="font-size:11px;background:rgba(0,0,0,0.08);border-radius:10px;padding:2px 8px;color:{_dot_color}">{len(_tasks_in)}</span>'
-                f'</div>'
-                f'{_cards_html}'
-                f'</div>'
+        # ── ヘッダー + ステータスカウント ────────────────────────────────────────
+        _hc_left, _hc_right = st.columns([3, 2])
+        with _hc_left:
+            section("📋 タスクボード", f"全 {len(all_tasks)} 件　セルをクリックして編集、最終行から新規追加")
+        with _hc_right:
+            _sc = {"未着手": 0, "進行中": 0, "完了": 0}
+            for _t in all_tasks:
+                _sc[_t.get("status", "未着手")] = _sc.get(_t.get("status", "未着手"), 0) + 1
+            st.markdown(
+                f'<div style="display:flex;gap:8px;padding-top:12px;justify-content:flex-end">'
+                f'<span style="background:#F5F5F5;color:#888;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600">未着手 {_sc["未着手"]}</span>'
+                f'<span style="background:{MINT_BG};color:{MINT_DARK};border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600">進行中 {_sc["進行中"]}</span>'
+                f'<span style="background:#F0F0F0;color:#999;border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600">完了 {_sc["完了"]}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
-            _board_html_parts.append(_col_html)
 
-        st.markdown(
-            '<div style="display:flex;gap:14px;align-items:flex-start">'
-            + "".join(_board_html_parts)
-            + '</div>',
-            unsafe_allow_html=True,
+        # ── DataFrame 構築 ──────────────────────────────────────────────────
+        _rows = []
+        for _t in all_tasks:
+            try:
+                _sd = date.fromisoformat(_t["start_date"]) if _t.get("start_date") else None
+            except ValueError:
+                _sd = None
+            _rows.append({
+                "タスク名":   _t.get("title", ""),
+                "詳細":       _t.get("description", ""),
+                "担当者":     _t.get("assignee", ""),
+                "ステータス": _t.get("status", "未着手"),
+                "期日":       _sd,
+                "対象KPI":    KPI_LABEL_MAP.get(_t["_kpi_key"], ("—",))[0],
+            })
+
+        _empty_cols = ["タスク名", "詳細", "担当者", "ステータス", "期日", "対象KPI"]
+        _df = pd.DataFrame(_rows) if _rows else pd.DataFrame(columns=_empty_cols)
+
+        # ── CSV ダウンロード ────────────────────────────────────────────────
+        _toolbar_l, _toolbar_r = st.columns([5, 1])
+        with _toolbar_r:
+            st.download_button(
+                "⬇ CSV",
+                _df.to_csv(index=False).encode("utf-8-sig"),
+                "tasks.csv", "text/csv",
+                use_container_width=True,
+            )
+
+        # ── テーブル編集 ────────────────────────────────────────────────────
+        _edited = st.data_editor(
+            _df,
+            column_config={
+                "タスク名":   st.column_config.TextColumn("タスク名", width="medium"),
+                "詳細":       st.column_config.TextColumn("詳細", width="large"),
+                "担当者":     st.column_config.TextColumn("担当者", width="small"),
+                "ステータス": st.column_config.SelectboxColumn(
+                    "ステータス", options=["未着手", "進行中", "完了"], width="small"),
+                "期日":       st.column_config.DateColumn("期日", format="YYYY/MM/DD", width="small"),
+                "対象KPI":    st.column_config.SelectboxColumn(
+                    "対象KPI", options=KPI_OPTIONS, width="small"),
+            },
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=False,
+            key="task_editor_df",
         )
 
-        # ── タスクアクション（ステータス変更・編集・削除）── ウィジェットはここだけに配置
-        if all_tasks:
-            st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
-            for _t in all_tasks:
-                _kl, _kc, _kb = KPI_LABEL_MAP.get(_t["_kpi_key"], ("—", "#999", "#F5F5F5"))
-                _cur_status = _t.get("status", "未着手")
-                _dot_color, _ = STATUS_STYLE.get(_cur_status, ("#888", "#F5F5F5"))
-                _task_edit_key = f"{_t['_kpi_key']}_{_t['_idx']}"
-                _ca, _ce, _cb, _cc = st.columns([4, 1, 2, 1])
-                with _ca:
-                    _assignee_disp = f' · 👤 {_t["assignee"]}' if _t.get("assignee") else ""
-                    st.markdown(
-                        f'<div style="padding:4px 0;font-size:13px;">'
-                        f'<span style="font-weight:600;color:{INK}">{_t.get("title","")}</span>'
-                        f'<span style="margin-left:8px;background:{_kb};color:{_kc};border-radius:10px;padding:1px 7px;font-size:10px">{_kl}</span>'
-                        f'<span style="color:#999;font-size:11px">{_assignee_disp}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                with _ce:
-                    if st.button("✏️", key=f"b_edit_{_task_edit_key}", use_container_width=True):
-                        if st.session_state.get("_editing_task") == _task_edit_key:
-                            st.session_state.pop("_editing_task", None)
-                        else:
-                            st.session_state["_editing_task"] = _task_edit_key
-                        st.rerun()
-                with _cb:
-                    _next_label = {"未着手": "▶ 開始", "進行中": "✅ 完了", "完了": "↩ 再開"}.get(_cur_status, "▶ 開始")
-                    _next_status = {"未着手": "進行中", "進行中": "完了", "完了": "進行中"}.get(_cur_status, "進行中")
-                    if st.button(_next_label, key=f"b_mv_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                        initiatives[_t["_kpi_key"]][_t["_idx"]]["status"] = _next_status
-                        _save_initiatives(initiatives)
-                        st.rerun()
-                with _cc:
-                    if st.button("🗑", key=f"b_del_{_t['_kpi_key']}_{_t['_idx']}", use_container_width=True):
-                        initiatives[_t["_kpi_key"]].pop(_t["_idx"])
-                        _save_initiatives(initiatives)
-                        st.rerun()
-
-                # インライン編集フォーム
-                if st.session_state.get("_editing_task") == _task_edit_key:
-                    with st.form(f"edit_task_form_{_task_edit_key}"):
-                        _ec_a, _ec_b = st.columns([2, 1])
-                        with _ec_a:
-                            _edit_title    = st.text_input("タスク名 *", value=_t.get("title", ""))
-                            _edit_assignee = st.text_input("担当者", value=_t.get("assignee", ""))
-                            _edit_desc     = st.text_area("詳細（任意）", value=_t.get("description", ""), height=60)
-                        with _ec_b:
-                            _cur_kpi_idx = KPI_KEYS.index(_t["_kpi_key"]) if _t["_kpi_key"] in KPI_KEYS else 0
-                            _edit_kpi    = st.selectbox("対象KPI", KPI_KEYS, index=_cur_kpi_idx,
-                                                         format_func=lambda k: KPI_LABEL_MAP[k][0])
-                            _status_opts  = ["未着手", "進行中", "完了"]
-                            _edit_status  = st.selectbox("ステータス", _status_opts,
-                                                          index=_status_opts.index(_cur_status) if _cur_status in _status_opts else 0)
-                            try:
-                                _sd = date.fromisoformat(_t["start_date"]) if _t.get("start_date") else date.today()
-                            except ValueError:
-                                _sd = date.today()
-                            _edit_date = st.date_input("開始日", value=_sd)
-                        _ec_sv, _ec_cx = st.columns(2)
-                        with _ec_sv:
-                            _save_submitted = st.form_submit_button("保存", type="primary", use_container_width=True)
-                        with _ec_cx:
-                            _cancel_submitted = st.form_submit_button("キャンセル", use_container_width=True)
-                    if _save_submitted and _edit_title:
-                        _task_data = {
-                            "title":       _edit_title,
-                            "assignee":    _edit_assignee,
-                            "description": _edit_desc,
-                            "start_date":  str(_edit_date),
-                            "status":      _edit_status,
-                            "added_at":    _t.get("added_at", str(date.today())),
-                        }
-                        if _edit_kpi == _t["_kpi_key"]:
-                            initiatives[_t["_kpi_key"]][_t["_idx"]] = _task_data
-                        else:
-                            initiatives[_t["_kpi_key"]].pop(_t["_idx"])
-                            if _edit_kpi not in initiatives:
-                                initiatives[_edit_kpi] = []
-                            initiatives[_edit_kpi].append(_task_data)
-                        _save_initiatives(initiatives)
-                        st.session_state.pop("_editing_task", None)
-                        st.rerun()
-                    if _cancel_submitted:
-                        st.session_state.pop("_editing_task", None)
-                        st.rerun()
-
-        # 新規タスク追加フォーム
-        st.markdown("---")
-        with st.expander("＋ 新しいタスクを追加"):
-            with st.form("add_task_form", clear_on_submit=True):
-                _col_a, _col_b = st.columns([2, 1])
-                with _col_a:
-                    _new_title    = st.text_input("タスク名 *", placeholder="例：最低期間終了前フォロー強化")
-                    _new_assignee = st.text_input("担当者", placeholder="例：田中")
-                    _new_desc     = st.text_area("詳細（任意）", height=60, placeholder="施策の内容・目的など")
-                with _col_b:
-                    _new_kpi    = st.selectbox(
-                        "対象KPI",
-                        KPI_KEYS,
-                        format_func=lambda k: KPI_LABEL_MAP[k][0],
-                    )
-                    _new_status = st.selectbox("ステータス", ["未着手", "進行中", "完了"])
-                    _new_date   = st.date_input("開始日", value=date.today())
-                _submitted = st.form_submit_button("追加する", type="primary", use_container_width=True)
-            if _submitted:
-                if _new_title:
-                    if _new_kpi not in initiatives:
-                        initiatives[_new_kpi] = []
-                    initiatives[_new_kpi].append({
-                        "title":       _new_title,
-                        "assignee":    _new_assignee,
-                        "description": _new_desc,
-                        "start_date":  str(_new_date),
-                        "status":      _new_status,
+        # ── 保存ボタン ──────────────────────────────────────────────────────
+        _sv_col, _ = st.columns([1, 5])
+        with _sv_col:
+            if st.button("💾 保存", type="primary", use_container_width=True):
+                _new_init = {k: [] for k in KPI_KEYS}
+                for _, _row in _edited.iterrows():
+                    _title = str(_row.get("タスク名") or "").strip()
+                    if not _title:
+                        continue
+                    _kpi_label = _row.get("対象KPI") or KPI_OPTIONS[0]
+                    _kpi_key   = KPI_LABEL_TO_KEY.get(str(_kpi_label), KPI_KEYS[0])
+                    _period    = _row.get("期日")
+                    _date_str  = str(_period) if _period is not None and str(_period) not in ("NaT", "None", "") else ""
+                    _new_init[_kpi_key].append({
+                        "title":       _title,
+                        "description": str(_row.get("詳細") or ""),
+                        "assignee":    str(_row.get("担当者") or ""),
+                        "status":      str(_row.get("ステータス") or "未着手"),
+                        "start_date":  _date_str,
                         "added_at":    str(date.today()),
                     })
-                    _save_initiatives(initiatives)
-                    st.success(f"タスク「{_new_title}」を追加しました！")
-                    st.rerun()
-                else:
-                    st.warning("タスク名を入力してください。")
+                _save_initiatives(_new_init)
+                st.success("保存しました")
+                st.rerun()
 
     st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
 
