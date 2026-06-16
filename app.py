@@ -3222,8 +3222,8 @@ def render_initiatives():
                 "ステータス": st.column_config.SelectboxColumn(
                     "ステータス", options=["未着手", "進行中", "完了"], width="small"),
                 "施策開始日":  st.column_config.DateColumn("施策開始日", format="YYYY/MM/DD", width="small"),
-                "対象KPI":    st.column_config.TextColumn(
-                    "対象KPI（カンマ区切りで複数可）", width="medium"),
+                "対象KPI":    st.column_config.SelectboxColumn(
+                    "対象KPI", options=KPI_OPTIONS, width="medium"),
             },
             num_rows="dynamic",
             use_container_width=True,
@@ -3241,11 +3241,7 @@ def render_initiatives():
                     if not _title:
                         continue
                     _kpi_str  = str(_row.get("対象KPI") or "").strip()
-                    _kpi_keys = [
-                        KPI_LABEL_TO_KEY[_lbl.strip()]
-                        for _lbl in _kpi_str.split(",")
-                        if _lbl.strip() in KPI_LABEL_TO_KEY
-                    ] or ["other"]
+                    _kpi_keys = [KPI_LABEL_TO_KEY[_kpi_str]] if _kpi_str in KPI_LABEL_TO_KEY else ["other"]
                     _period   = _row.get("施策開始日")
                     _date_str = str(_period) if _period is not None and str(_period) not in ("NaT", "None", "") else ""
                     _new_tasks.append({
