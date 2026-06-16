@@ -69,10 +69,20 @@ def _load_initiatives() -> dict:
     try:
         if os.path.exists(_INITIATIVES_FILE):
             with open(_INITIATIVES_FILE, encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+            # 旧形式 {kpi_key: [...]} → 新形式 {"tasks": [...]} に自動移行
+            if "tasks" not in data:
+                _tasks = []
+                for _k, _lst in data.items():
+                    for _t in _lst:
+                        _nt = dict(_t)
+                        _nt["kpi_keys"] = [_k]
+                        _tasks.append(_nt)
+                return {"tasks": _tasks}
+            return data
     except Exception:
         pass
-    return {"churn_rate": [], "avg_duration": [], "zero_apps": [], "app_count": []}
+    return {"tasks": []}
 
 def _save_initiatives(data: dict) -> bool:
     try:
@@ -3094,15 +3104,14 @@ def render_initiatives():
     # Load + migrate: "実行中" → "進行中"
     initiatives = _load_initiatives()
     _migrated = False
-    for _kk in list(initiatives.keys()):
-        for _item in initiatives[_kk]:
-            if _item.get("status") == "実行中":
-                _item["status"] = "進行中"
-                _migrated = True
+    for _item in initiatives.get("tasks", []):
+        if _item.get("status") == "実行中":
+            _item["status"] = "進行中"
+            _migrated = True
     if _migrated:
         _save_initiatives(initiatives)
 
-    KPI_KEYS = ["churn_rate", "avg_duration", "zero_apps", "app_count"]
+    KPI_KEYS = ["churn_rate", "avg_duration", "zero_apps", "app_count", "other"]
     KPI_CONFIG = [
         {
             "key":   "churn_rate",
@@ -3134,6 +3143,7 @@ def render_initiatives():
         "avg_duration": ("📅 平均継続月数",   MINT_DARK, MINT_BG),
         "zero_apps":    ("⚠️ 応募0件",        "#F5A623", "#FEF6E5"),
         "app_count":    ("📊 各案件応募数",    "#5B8DEF", "#EEF3FE"),
+        "other":        ("その他",             "#888888", "#F5F5F5"),
     }
     STATUS_STYLE = {
         "未着手": ("#888888", "#F5F5F5"),
@@ -3147,10 +3157,10 @@ def render_initiatives():
     KPI_LABEL_TO_KEY = {v[0]: k for k, v in KPI_LABEL_MAP.items()}
     KPI_OPTIONS = [KPI_LABEL_MAP[k][0] for k in KPI_KEYS]
 
-    all_tasks = []
-    for _kpi_key in KPI_KEYS:
-        for _task in initiatives.get(_kpi_key, []):
-            all_tasks.append({"_kpi_key": _kpi_key, **_task})
+    all_tasks = initiatives.get("tasks", [])
+
+    def _tasks_for_kpi(kpi_key):
+        return [t for t in all_tasks if kpi_key in t.get("kpi_keys", [])]
 
     with st.container(border=True):
         # ── ヘッダー + ステータスカウント ────────────────────────────────────────
@@ -3177,13 +3187,16 @@ def render_initiatives():
                 _sd = date.fromisoformat(_t["start_date"]) if _t.get("start_date") else None
             except ValueError:
                 _sd = None
+            _kpi_labels = ", ".join(
+                KPI_LABEL_MAP[k][0] for k in _t.get("kpi_keys", []) if k in KPI_LABEL_MAP
+            )
             _rows.append({
                 "タスク名":   _t.get("title", ""),
                 "詳細":       _t.get("description", ""),
                 "担当者":     _t.get("assignee", ""),
                 "ステータス": _t.get("status", "未着手"),
                 "施策開始日":  _sd,
-                "対象KPI":    KPI_LABEL_MAP.get(_t["_kpi_key"], ("—",))[0],
+                "対象KPI":    _kpi_labels,
             })
 
         _empty_cols = ["タスク名", "詳細", "担当者", "ステータス", "施策開始日", "対象KPI"]
@@ -3209,8 +3222,8 @@ def render_initiatives():
                 "ステータス": st.column_config.SelectboxColumn(
                     "ステータス", options=["未着手", "進行中", "完了"], width="small"),
                 "施策開始日":  st.column_config.DateColumn("施策開始日", format="YYYY/MM/DD", width="small"),
-                "対象KPI":    st.column_config.SelectboxColumn(
-                    "対象KPI", options=KPI_OPTIONS, width="small"),
+                "対象KPI":    st.column_config.TextColumn(
+                    "対象KPI（カンマ区切りで複数可）", width="medium"),
             },
             num_rows="dynamic",
             use_container_width=True,
@@ -3222,24 +3235,29 @@ def render_initiatives():
         _sv_col, _ = st.columns([1, 5])
         with _sv_col:
             if st.button("💾 保存", type="primary", use_container_width=True):
-                _new_init = {k: [] for k in KPI_KEYS}
+                _new_tasks = []
                 for _, _row in _edited.iterrows():
                     _title = str(_row.get("タスク名") or "").strip()
                     if not _title:
                         continue
-                    _kpi_label = _row.get("対象KPI") or KPI_OPTIONS[0]
-                    _kpi_key   = KPI_LABEL_TO_KEY.get(str(_kpi_label), KPI_KEYS[0])
-                    _period    = _row.get("施策開始日")
-                    _date_str  = str(_period) if _period is not None and str(_period) not in ("NaT", "None", "") else ""
-                    _new_init[_kpi_key].append({
+                    _kpi_str  = str(_row.get("対象KPI") or "").strip()
+                    _kpi_keys = [
+                        KPI_LABEL_TO_KEY[_lbl.strip()]
+                        for _lbl in _kpi_str.split(",")
+                        if _lbl.strip() in KPI_LABEL_TO_KEY
+                    ] or ["other"]
+                    _period   = _row.get("施策開始日")
+                    _date_str = str(_period) if _period is not None and str(_period) not in ("NaT", "None", "") else ""
+                    _new_tasks.append({
                         "title":       _title,
                         "description": str(_row.get("詳細") or ""),
                         "assignee":    str(_row.get("担当者") or ""),
                         "status":      str(_row.get("ステータス") or "未着手"),
                         "start_date":  _date_str,
+                        "kpi_keys":    _kpi_keys,
                         "added_at":    str(date.today()),
                     })
-                _save_initiatives(_new_init)
+                _save_initiatives({"tasks": _new_tasks})
                 st.success("保存しました")
                 st.rerun()
 
@@ -3394,7 +3412,7 @@ def render_initiatives():
             # トレンドチャート
             chart_df = kpi_charts.get(key)
             if chart_df is not None and (isinstance(chart_df, dict) or not chart_df.empty):
-                init_list = initiatives.get(key, [])
+                init_list = _tasks_for_kpi(key)
                 active_inits = [i for i in init_list if i.get("status") == "進行中"]
 
                 if key == "churn_rate":
@@ -3451,7 +3469,7 @@ def render_initiatives():
                                 textfont=dict(size=9, color=color),
                                 hovertemplate="<b>%{x}</b><br>平均: %{y:.1f}ヶ月<extra></extra>",
                             ))
-                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
+                            for init in [i for i in _tasks_for_kpi(key) if i.get("status") == "進行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in churn_df["month"].values:
                                     fig_dur.add_shape(
@@ -3500,7 +3518,7 @@ def render_initiatives():
                                 textfont=dict(size=10, color=color),
                                 hovertemplate="<b>%{x}</b><br>LTV平均: %{y:.1f}ヶ月<extra></extra>",
                             ))
-                            for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
+                            for init in [i for i in _tasks_for_kpi(key) if i.get("status") == "進行中"]:
                                 m = init.get("start_date", "")[:7]
                                 if m in snap_df["month"].values:
                                     fig_ltv.add_shape(
@@ -3545,7 +3563,7 @@ def render_initiatives():
                             hovertemplate="<b>%{x}</b><br>応募0件: %{y}件<extra></extra>",
                         ))
                         # 施策開始日マーカー
-                        for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
+                        for init in [i for i in _tasks_for_kpi(key) if i.get("status") == "進行中"]:
                             m = init.get("start_date", "")[:7]
                             if m in chart_df["month"].values:
                                 fig_z.add_shape(
@@ -3590,7 +3608,7 @@ def render_initiatives():
                         hovertemplate="<b>%{x}</b><br>採用数: %{y:,}<extra></extra>",
                     ))
                     # 施策マーカー
-                    for init in [i for i in initiatives.get(key, []) if i.get("status") == "進行中"]:
+                    for init in [i for i in _tasks_for_kpi(key) if i.get("status") == "進行中"]:
                         m = init.get("start_date", "")[:7]
                         if m in chart_df["month"].values:
                             fig2.add_shape(
