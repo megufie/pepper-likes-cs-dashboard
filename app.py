@@ -1545,6 +1545,62 @@ def render_churn():
             )
             st.plotly_chart(fig_rbm, use_container_width=True, config=CHART_CFG)
 
+    # ── エリア×応募数 相関 ──────────────────────────────────────────────────
+    region_app_df = queries.get_churn_region_app_correlation(con)
+    if not region_app_df.empty:
+        with st.container(border=True):
+            section("📍 エリア別 応募数（解約企業）",
+                    "掲載開始日・解約日が両方記入されている企業の応募数をエリア別に集計")
+
+            # エリアごとの平均・件数を集計
+            _agg = (
+                region_app_df
+                .groupby("エリア", as_index=False)
+                .agg(平均応募数=("応募数", "mean"), 解約社数=("企業名", "nunique"))
+                .sort_values("平均応募数", ascending=False)
+            )
+            _agg["平均応募数"] = _agg["平均応募数"].round(1)
+
+            col_bar, col_box = st.columns(2)
+            with col_bar:
+                fig_ra = px.bar(
+                    _agg,
+                    x="エリア", y="平均応募数",
+                    text="平均応募数",
+                    hover_data={"解約社数": True},
+                    color="平均応募数",
+                    color_continuous_scale=["#FEF0EF", "#D9534F"],
+                    labels={"エリア": "", "平均応募数": "平均応募数"},
+                )
+                fig_ra.update_traces(textposition="outside", textfont=dict(size=10, color=INK_2))
+                fig_ra.update_coloraxes(showscale=False)
+                fig_ra.update_layout(
+                    height=320,
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor="#eee", title="平均応募数"),
+                )
+                st.plotly_chart(fig_ra, use_container_width=True, config=CHART_CFG)
+
+            with col_box:
+                fig_sc = px.box(
+                    region_app_df,
+                    x="エリア", y="応募数",
+                    points="all",
+                    color_discrete_sequence=["#D9534F"],
+                    labels={"エリア": "", "応募数": "応募数"},
+                    hover_data={"企業名": True},
+                )
+                fig_sc.update_layout(
+                    height=320,
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    xaxis=dict(showgrid=False, tickangle=-30, tickfont=dict(size=10)),
+                    yaxis=dict(showgrid=True, gridcolor="#eee", title="応募数"),
+                )
+                st.plotly_chart(fig_sc, use_container_width=True, config=CHART_CFG)
+
     # ── 解約企業一覧 ─────────────────────────────────────────────────────────
     with st.container(border=True):
         section("📋 解約企業一覧", "解約日の新しい順")

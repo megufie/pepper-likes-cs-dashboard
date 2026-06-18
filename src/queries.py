@@ -1746,6 +1746,32 @@ def get_churn_detail_list(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """).df()
 
 
+def get_churn_region_app_correlation(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """
+    解約確定企業（start_date・churn_date 両方あり）のエリア別応募数。
+    sheet_churn_detail × sheet_individual_check を company_name で結合。
+    """
+    try:
+        con.execute("SELECT 1 FROM sheet_individual_check LIMIT 1")
+    except Exception:
+        return pd.DataFrame()
+
+    return con.execute("""
+        SELECT
+            ic.region                           AS エリア,
+            ic.contract_company                 AS 企業名,
+            COALESCE(ic.apps_count, 0)          AS 応募数
+        FROM sheet_churn_detail cd
+        JOIN sheet_individual_check ic
+          ON ic.contract_company = cd.company_name
+        WHERE cd.start_date IS NOT NULL
+          AND cd.churn_date  IS NOT NULL
+          AND ic.region IS NOT NULL
+          AND ic.region != ''
+        ORDER BY エリア, 応募数 DESC
+    """).df()
+
+
 # ── CS業務用: per-company real-time queries ───────────────────────────────────
 
 def get_cs_company_list(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
