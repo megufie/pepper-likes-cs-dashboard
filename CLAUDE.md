@@ -78,7 +78,7 @@ cs-dashbord/
 
 - **掲載中の判定**：`projects.status='publish' AND proposal_status='open'`
 - **継続月数**：シート由来。`掲載開始日 → 解約日（or 今日）` のカレンダー月単位
-- **応募0件**：個別対策確認シートで `G='募集中' AND H∈{解約連絡あり,公開中,空白} AND L=0`
+- **応募0件**：個別対策確認シートで `G∈{募集中,空白} AND H∈{解約連絡あり,公開中,空白} AND L=0`
 - **解約**：Slackが速報源、シートが詳細、DB（package_subscribers）は購読履歴
 
 ## Claude Code への引き継ぎ

@@ -627,7 +627,7 @@ def get_monthly_apps_from_sheet(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 
 def get_apps_by_prefecture_from_sheet(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """都道府県別応募数 (当月/先月) from sheet_individual_check.
-    フィルター: status1=募集中, status2 ∈ {解約連絡あり, 公開中, 空白}
+    フィルター: status1 IN (募集中, 空白), status2 ∈ {解約連絡あり, 公開中, 空白}
     """
     try:
         return con.execute("""
@@ -637,7 +637,7 @@ def get_apps_by_prefecture_from_sheet(con: duckdb.DuckDBPyConnection) -> pd.Data
                 SUM(COALESCE(apps_count, 0))     AS app_count_current,
                 SUM(COALESCE(prev_apps_count, 0)) AS app_count_prev
             FROM sheet_individual_check
-            WHERE status1 = '募集中'
+            WHERE COALESCE(status1, '') IN ('募集中', '')
               AND (status2 IN ('解約連絡あり', '公開中') OR status2 = '' OR status2 IS NULL)
               AND region IS NOT NULL AND region != '' AND region != 'オンライン'
             GROUP BY region
@@ -1569,7 +1569,7 @@ def get_uncollected_detail(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
 def get_apps_bucket_by_month(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """
     先月・当月の応募数バケット別 案件数（積み上げ棒グラフ用）。
-    対象: status1='募集中' AND status2 IN ('解約連絡あり','公開中','空白')
+    対象: status1 IN (募集中, 空白) AND status2 IN ('解約連絡あり','公開中','空白')
     先月: I列（post_create_date）が当月の案件を除外（先月は存在しなかった案件）
     バケット: 0/1〜4/5〜9/10〜14/15〜19/20〜24/25〜29/30以上
     """
@@ -1599,7 +1599,7 @@ def get_apps_bucket_by_month(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
                {bucket_case('apps_count')} AS bucket,
                COUNT(*) AS 案件数
         FROM sheet_individual_check
-        WHERE status1 = '募集中'
+        WHERE COALESCE(status1, '') IN ('募集中', '')
           AND COALESCE(status2, '') IN ('解約連絡あり', '公開中', '')
         GROUP BY bucket
 
@@ -1609,7 +1609,7 @@ def get_apps_bucket_by_month(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
                {bucket_case('prev_apps_count')} AS bucket,
                COUNT(*) AS 案件数
         FROM sheet_individual_check
-        WHERE status1 = '募集中'
+        WHERE COALESCE(status1, '') IN ('募集中', '')
           AND COALESCE(status2, '') IN ('解約連絡あり', '公開中', '')
           AND (
               post_create_date IS NULL

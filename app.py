@@ -696,17 +696,17 @@ def render_summary():
         active_postings = None
 
     # 応募0件案件数 — シート「★個別対策確認」をソースとする
-    # 条件: G列='募集中' AND H列 IN ('解約連絡あり','公開中','空白') AND L列=0
+    # 条件: G列 IN ('募集中','空白') AND H列 IN ('解約連絡あり','公開中','空白') AND L列=0
     try:
         zero_app_count = int(con.execute("""
             SELECT COUNT(*) FROM sheet_individual_check
-            WHERE status1 = '募集中'
+            WHERE COALESCE(status1, '') IN ('募集中', '')
               AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
               AND COALESCE(apps_count, 0) = 0
         """).fetchone()[0])
         zero_app_unique_companies = int(con.execute("""
             SELECT COUNT(DISTINCT contract_company) FROM sheet_individual_check
-            WHERE status1 = '募集中'
+            WHERE COALESCE(status1, '') IN ('募集中', '')
               AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
               AND COALESCE(apps_count, 0) = 0
               AND contract_company != ''
@@ -886,7 +886,7 @@ def render_summary():
                 ROUND(AVG(app_count), 1)      AS avg_now,
                 ROUND(AVG(prev_app_count), 1) AS avg_prev
             FROM sheet_app_counts
-            WHERE status1 = '募集中'
+            WHERE COALESCE(status1, '') IN ('募集中', '')
         """).df()
         if not _apps_df.empty:
             _apps_count    = int(_apps_df.iloc[0]["cnt"])
@@ -1237,7 +1237,7 @@ def render_summary():
                         status2          AS 状況,
                         project_title    AS 案件名
                     FROM sheet_individual_check
-                    WHERE status1 = '募集中'
+                    WHERE COALESCE(status1, '') IN ('募集中', '')
                       AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
                       AND COALESCE(apps_count, 0) = 0
                     ORDER BY post_create_date
@@ -1278,7 +1278,7 @@ def render_summary():
                         apps_count       AS 当月,
                         project_title    AS 案件名
                     FROM sheet_individual_check
-                    WHERE status1 = '募集中'
+                    WHERE COALESCE(status1, '') IN ('募集中', '')
                       AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
                       AND COALESCE(prev_apps_count, 0) = 0
                       AND TRY_STRPTIME(post_create_date, '%m/%d/%Y') < DATE_TRUNC('month', CURRENT_DATE)
@@ -3385,7 +3385,7 @@ def render_initiatives():
                     COUNT(CASE WHEN COALESCE(apps_count,0) = 0 THEN 1 END)      AS zero_now,
                     COUNT(CASE WHEN COALESCE(prev_apps_count,0) = 0 THEN 1 END) AS zero_prev
                 FROM sheet_individual_check
-                WHERE status1 = '募集中'
+                WHERE COALESCE(status1, '') IN ('募集中', '')
                   AND COALESCE(status2, '') IN ('解約連絡あり','公開中','')
             """).fetchone()
             z_now, z_prev = int(zr[0]), int(zr[1])
