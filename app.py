@@ -1004,6 +1004,17 @@ def render_summary():
                     if new_reason != saved_reason:
                         _churn_reasons[reason_key] = new_reason
                         _reasons_changed = True
+                    # URLが含まれていればリンクとして表示
+                    import re as _re
+                    _url_m = _re.search(r'https?://\S+', new_reason)
+                    if _url_m:
+                        _url = _url_m.group(0).rstrip(".,)")
+                        st.markdown(
+                            f'<a href="{_url}" target="_blank" rel="noopener" '
+                            f'style="font-size:11px;color:#1a73e8;margin-left:4px;">'
+                            f'🔗 リンクを開く</a>',
+                            unsafe_allow_html=True,
+                        )
 
                 st.markdown('<div style="margin-bottom:10px"></div>', unsafe_allow_html=True)
 
