@@ -1620,11 +1620,27 @@ def render_churn():
                         "font-weight:700;text-align:center;border-radius:8px;")
             return "color:#999;text-align:center;"
 
+        import re as _re
+        _url_pat = _re.compile(r'https?://\S+')
+
+        def _extract_url(text):
+            m = _url_pat.search(str(text or ""))
+            return m.group(0).rstrip(".,)") if m else None
+
+        detail_list["リンク"] = detail_list["詳細"].apply(_extract_url)
+
         styled_list = (detail_list.style
             .map(_sentiment_style, subset=["センチメント"])
             .set_properties(**{"font-size": "11px"}))
-        st.dataframe(styled_list, use_container_width=True, hide_index=True,
-                     height=min(600, 60 + len(detail_list) * 35))
+        st.dataframe(
+            styled_list,
+            column_config={
+                "リンク": st.column_config.LinkColumn("🔗 リンク", display_text="開く"),
+            },
+            use_container_width=True,
+            hide_index=True,
+            height=min(600, 60 + len(detail_list) * 35),
+        )
 
 
 # ── Page: 応募分析 (Application Analysis) ────────────────────────────────────
